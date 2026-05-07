@@ -1,21 +1,37 @@
-# samsung-health-mcp-server
+<!-- delx-wellness header v2 -->
+<h1 align="center">Samsung Health MCP</h1>
 
-<!-- delx-wellness badges -->
-[![npm version](https://img.shields.io/npm/v/samsung-health-mcp-unofficial?color=14b8a6)](https://www.npmjs.com/package/samsung-health-mcp-unofficial)
-[![npm downloads](https://img.shields.io/npm/dw/samsung-health-mcp-unofficial?color=14b8a6)](https://www.npmjs.com/package/samsung-health-mcp-unofficial)
-[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](https://opensource.org/licenses/MIT)
-[![Part of Delx Wellness](https://img.shields.io/badge/part%20of-Delx%20Wellness-0ea5a3)](https://wellness.delx.ai)
+<div align="center">
+  <img src="assets/banner.png" alt="Samsung Health MCP — Samsung Health MCP for AI agents" width="85%" />
+</div>
 
-> **One-command install** with [Delx Wellness for Hermes](https://github.com/davidmosiah/delx-wellness-hermes):
-> `npx -y delx-wellness-hermes setup`
+<h3 align="center">
+  Read your Samsung Health CSV/ZIP exports &mdash; activity, sleep, heart, stress &mdash; locally.<br>
+  Local-first MCP server &mdash; <strong>tokens never leave your machine</strong>.
+</h3>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/samsung-health-mcp-unofficial"><img src="https://img.shields.io/npm/v/samsung-health-mcp-unofficial?style=for-the-badge&labelColor=0F172A&color=10B981&logo=npm&logoColor=white" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/samsung-health-mcp-unofficial"><img src="https://img.shields.io/npm/dm/samsung-health-mcp-unofficial?style=for-the-badge&labelColor=0F172A&color=0EA5A3&logo=npm&logoColor=white" alt="npm downloads" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-22C55E?style=for-the-badge&labelColor=0F172A" alt="License MIT" /></a>
+  <a href="https://wellness.delx.ai/connectors/samsung-health"><img src="https://img.shields.io/badge/SITE-wellness.delx.ai-0EA5A3?style=for-the-badge&labelColor=0F172A" alt="Site" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/davidmosiah/samsung-health-mcp/stargazers"><img src="https://img.shields.io/github/stars/davidmosiah/samsung-health-mcp?style=for-the-badge&labelColor=0F172A&color=FBBF24&logo=github" alt="GitHub stars" /></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/BUILT_FOR-MCP-7C3AED?style=for-the-badge&labelColor=0F172A" alt="Built for MCP" /></a>
+  <a href="https://github.com/davidmosiah/delx-wellness-hermes"><img src="https://img.shields.io/badge/HERMES-one--command_setup-10B981?style=for-the-badge&labelColor=0F172A" alt="Hermes one-command setup" /></a>
+  <a href="https://github.com/davidmosiah/delx-wellness"><img src="https://img.shields.io/badge/Samsung%20Health-1428A0?style=for-the-badge&labelColor=0F172A&logoColor=white&logo=samsung&logoColor=white" alt="Samsung Health" /></a>
+</p>
+
+> ⚡ **One-command install** with [Delx Wellness for Hermes](https://github.com/davidmosiah/delx-wellness-hermes):
+> `npx -y delx-wellness-hermes setup` &mdash; preconfigures this connector and the other 8 in a dedicated Hermes profile.
 >
-> Or wire it standalone into Claude Desktop / Cursor / ChatGPT Desktop.
-<!-- /delx-wellness badges -->
+> Or wire it standalone into Claude Desktop / Cursor / ChatGPT Desktop &mdash; see the install section below.
 
-[![MCP Compatible](https://img.shields.io/badge/MCP-compatible-7C3AED?style=flat-square&logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
-[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Provider: Samsung Health](https://img.shields.io/badge/data-Samsung%20Health-1428A0?style=flat-square&logo=samsung&logoColor=white)](https://www.samsung.com/us/support/owners/app/samsung-health/)
-[![Agent-ready MCP](https://img.shields.io/badge/agent--ready-MCP-0ea5a3?style=flat-square)](https://wellness.delx.ai/connectors/samsung-health)
+---
+
+<!-- /delx-wellness header v2 -->
 
 **Unofficial local-first MCP server that reads Samsung Health personal-data CSV/ZIP exports and exposes them safely to AI agents.**
 
