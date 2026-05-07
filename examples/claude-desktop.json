@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "samsung_health": {
+      "command": "npx",
+      "args": ["-y", "samsung-health-mcp-unofficial"]
+    }
+  }
+}

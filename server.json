@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.davidmosiah/samsung-health-mcp",
+  "description": "Unofficial local-first MCP server for Samsung Health personal-data CSV/ZIP exports.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/davidmosiah/samsung-health-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "samsung-health-mcp-unofficial",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SAMSUNG_HEALTH_EXPORT_PATH",
+          "description": "Path to a Samsung Health personal-data folder, .csv file, or .zip containing CSV files.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SAMSUNG_HEALTH_TIMEZONE",
+          "description": "IANA timezone used to interpret daily and weekly local-day summaries.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SAMSUNG_HEALTH_PRIVACY_MODE",
+          "description": "summary, structured, or raw. Defaults to summary.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ],
+  "remotes": [],
+  "websiteUrl": "https://wellness.delx.ai/connectors/samsung-health"
+}

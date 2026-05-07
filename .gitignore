@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.DS_Store
+.env
+*.log
+/export.xml
+/export.zip
+/samsung_health_export/
+*.bak-samsung-health-mcp-*
