@@ -1,6 +1,6 @@
 {
   "name": "samsung-health-mcp-unofficial",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Unofficial local-first MCP server for Samsung Health personal-data CSV/ZIP exports.",
   "type": "module",
   "bin": {
