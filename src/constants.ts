@@ -1,5 +1,5 @@
 export const SERVER_NAME = "samsung-health-mcp-server";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.3.0";
 export const NPM_PACKAGE_NAME = "samsung-health-mcp-unofficial";
 export const PINNED_NPM_PACKAGE = `${NPM_PACKAGE_NAME}@${SERVER_VERSION}`;
 

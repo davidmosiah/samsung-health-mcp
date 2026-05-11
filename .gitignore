@@ -7,3 +7,4 @@ dist/
 /export.zip
 /samsung_health_export/
 *.bak-samsung-health-mcp-*
+.mcpregistry_*

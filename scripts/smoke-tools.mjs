@@ -6,11 +6,13 @@ const expectedTools = [
   'samsung_health_agent_manifest',
   'samsung_health_capabilities',
   'samsung_health_connection_status',
-  'samsung_health_data_inventory',
   'samsung_health_daily_summary',
+  'samsung_health_data_inventory',
+  'samsung_health_demo',
   'samsung_health_list_records',
   'samsung_health_list_workouts',
   'samsung_health_privacy_audit',
+  'samsung_health_quickstart',
   'samsung_health_weekly_summary',
   'samsung_health_wellness_context'
 ];
