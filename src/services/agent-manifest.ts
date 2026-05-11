@@ -23,7 +23,10 @@ const STANDARD_TOOLS = [
   "samsung_health_demo",
   "samsung_health_list_records",
   "samsung_health_list_workouts",
+  "samsung_health_onboarding",
   "samsung_health_privacy_audit",
+  "samsung_health_profile_get",
+  "samsung_health_profile_update",
   "samsung_health_quickstart",
   "samsung_health_weekly_summary",
   "samsung_health_wellness_context"
@@ -56,7 +59,7 @@ export function buildAgentManifest(client: AgentClientName = "generic") {
       managed_exports_dir: "~/.samsung-health-mcp/exports",
       supported_record_types: SUPPORTED_RECORD_TYPES
     },
-    recommended_first_calls: ["samsung_health_quickstart", "samsung_health_demo", "samsung_health_connection_status", "samsung_health_data_inventory", "samsung_health_wellness_context", "samsung_health_daily_summary", "samsung_health_weekly_summary"],
+    recommended_first_calls: ["samsung_health_profile_get", "samsung_health_quickstart", "samsung_health_demo", "samsung_health_connection_status", "samsung_health_data_inventory", "samsung_health_wellness_context", "samsung_health_daily_summary", "samsung_health_weekly_summary"],
     standard_tools: STANDARD_TOOLS,
     resources: ["samsung-health://agent-manifest", "samsung-health://capabilities", "samsung-health://inventory", "samsung-health://summary/daily", "samsung-health://summary/weekly"],
     hermes: {

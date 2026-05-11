@@ -7,12 +7,12 @@
     "url": "https://github.com/davidmosiah/samsung-health-mcp",
     "source": "github"
   },
-  "version": "0.3.0",
+  "version": "0.4.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "samsung-health-mcp-unofficial",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       },

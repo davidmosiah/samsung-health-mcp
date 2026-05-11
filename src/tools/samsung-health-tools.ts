@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 import {
   AgentManifestInputSchema,
   ConnectionStatusInputSchema,
@@ -17,6 +18,15 @@ import { getConfig } from "../services/config.js";
 import { buildConnectionStatus } from "../services/connection-status.js";
 import { listRecords, listWorkouts } from "../services/samsung-health-export.js";
 import { bulletList, makeError, makeResponse } from "../services/format.js";
+import {
+  buildProfileSummary,
+  getOnboardingFlow,
+  getProfile,
+  getProfilePath,
+  missingCriticalFields,
+  updateProfile,
+  type WellnessProfileDocument
+} from "../services/profile-store.js";
 import { buildDailySummary, buildWeeklySummary, formatSummaryMarkdown } from "../services/summary.js";
 import { buildWellnessContext, formatWellnessContextMarkdown } from "../services/context.js";
 import { buildDataInventory, formatInventoryMarkdown } from "../services/inventory.js";
@@ -346,4 +356,120 @@ export function registerSamsungHealthTools(server: McpServer): void {
       return makeError((error as Error).message);
     }
   });
+
+  server.registerTool(
+    "samsung_health_profile_get",
+    {
+      title: "Get Delx Wellness Profile",
+      description:
+        "Read the shared Delx Wellness profile from ~/.delx-wellness/profile.json. Returns preferred name, goals, devices, training/nutrition/exercise/agent preferences and safety flags. NEVER contains OAuth tokens or API secrets — this connector is local-export and has no cloud auth, but the profile contract is the same across every Delx Wellness MCP. Read-only.",
+      inputSchema: ResponseOnlyInputSchema.shape,
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ response_format }) => {
+      try {
+        const profile = await getProfile();
+        const payload = {
+          ok: true,
+          profile,
+          summary: buildProfileSummary(profile),
+          missing_critical: missingCriticalFields(profile),
+          storage_path: getProfilePath()
+        };
+        return makeResponse(payload, response_format, bulletList("Delx Wellness Profile", {
+          summary: payload.summary,
+          missing_critical: payload.missing_critical,
+          storage_path: payload.storage_path
+        }));
+      } catch (error) {
+        return makeError((error as Error).message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "samsung_health_profile_update",
+    {
+      title: "Update Delx Wellness Profile",
+      description:
+        "Persist a partial patch to ~/.delx-wellness/profile.json. Requires explicit_user_intent=true (otherwise returns USER_ACTION_REQUIRED). Rejects secret-like fields (oauth, token, secret, password, cookie, refresh, api_key, session) at write time. Use to record preferred name, goals, devices, training context, nutrition context, exercise preferences, agent preferences, and safety flags.",
+      inputSchema: {
+        patch: z.record(z.string(), z.unknown()).describe("Partial WellnessProfileDocument patch. Top-level keys: profile, goals, devices, training, nutrition, preferences, safety, notes."),
+        explicit_user_intent: z.boolean().optional().describe("Must be true to persist. Prevents accidental writes from agent inference."),
+        response_format: z.enum(["markdown", "json"]).default("markdown")
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    async ({ patch, explicit_user_intent, response_format }) => {
+      try {
+        if (explicit_user_intent !== true) {
+          return makeResponse(
+            {
+              ok: false,
+              error: "USER_ACTION_REQUIRED",
+              message: "Profile update requires explicit_user_intent=true. Confirm with the user before persisting."
+            },
+            response_format,
+            bulletList("Delx Wellness Profile Update", {
+              ok: false,
+              error: "USER_ACTION_REQUIRED",
+              hint: "Set explicit_user_intent=true once the user has confirmed."
+            })
+          );
+        }
+        const updated = await updateProfile(patch as Partial<WellnessProfileDocument>);
+        const payload = {
+          ok: true,
+          profile: updated,
+          summary: buildProfileSummary(updated),
+          missing_critical: missingCriticalFields(updated),
+          storage_path: getProfilePath()
+        };
+        return makeResponse(payload, response_format, bulletList("Delx Wellness Profile Updated", {
+          summary: payload.summary,
+          missing_critical: payload.missing_critical,
+          storage_path: payload.storage_path
+        }));
+      } catch (error) {
+        return makeError((error as Error).message);
+      }
+    }
+  );
+
+  server.registerTool(
+    "samsung_health_onboarding",
+    {
+      title: "Delx Wellness Onboarding Flow",
+      description:
+        "Return the 11-question onboarding flow plus the current profile state and missing fields. Read-only — does NOT persist anything. Pair with samsung_health_profile_update once the user answers. Cross-connector: the same profile is shared by every Delx Wellness MCP (whoop, garmin, oura, fitbit, strava, polar, withings, apple-health, samsung-health, google-health, nourish, cycle-coach, cgm, air).",
+      inputSchema: {
+        locale: z.enum(["en", "pt-BR"]).optional().describe("Onboarding locale. Defaults to en."),
+        response_format: z.enum(["markdown", "json"]).default("markdown")
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ locale, response_format }) => {
+      try {
+        const flow = getOnboardingFlow(locale ?? "en");
+        const profile = await getProfile();
+        const payload = {
+          ok: true,
+          flow,
+          current_profile: profile,
+          missing_critical: missingCriticalFields(profile),
+          cross_connector_hint:
+            "This profile is shared across all Delx Wellness connectors. Answering once populates context for whoop, garmin, oura, fitbit, strava, polar, withings, apple-health, samsung-health, google-health, nourish, cycle-coach, cgm, and air."
+        };
+        return makeResponse(payload, response_format, bulletList("Delx Wellness Onboarding", {
+          locale: flow.locale,
+          questions: `${flow.questions.length} questions`,
+          storage_path: flow.storage_path,
+          missing_critical: payload.missing_critical,
+          privacy_note: flow.privacy_note
+        }));
+      } catch (error) {
+        return makeError((error as Error).message);
+      }
+    }
+  );
 }

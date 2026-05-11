@@ -1,13 +1,22 @@
 import { SERVER_VERSION } from "../constants.js";
 import { parseAgentClientName } from "../services/agent-manifest.js";
 import { buildConnectionStatus } from "../services/connection-status.js";
+import {
+  buildProfileSummary,
+  getOnboardingFlow,
+  getProfile,
+  missingCriticalFields
+} from "../services/profile-store.js";
 import { runSetupCommand } from "./setup.js";
+
+const COMMANDS = ["setup", "doctor", "status", "onboarding", "version", "help"] as const;
 
 export async function runCliCommand(args: string[]): Promise<number | undefined> {
   const [command, ...rest] = args;
   if (!command || command === "--http") return undefined;
   if (command === "setup") return runSetupCommand(rest);
   if (command === "doctor" || command === "status") return runDoctor(rest);
+  if (command === "onboarding") return runOnboarding(rest);
   if (command === "version" || command === "--version" || command === "-v") {
     console.log(SERVER_VERSION);
     return 0;
@@ -23,6 +32,36 @@ export async function runCliCommand(args: string[]): Promise<number | undefined>
   }
   return undefined;
 }
+
+async function runOnboarding(args: string[]): Promise<number> {
+  const locale = args.includes("--pt-BR") || args.includes("--pt-br") ? "pt-BR" : "en";
+  const flow = getOnboardingFlow(locale);
+  const profile = await getProfile();
+  const payload = {
+    ok: true,
+    flow,
+    current_profile: profile,
+    missing_critical: missingCriticalFields(profile),
+    summary: buildProfileSummary(profile),
+    cross_connector_hint:
+      "This profile is shared across every Delx Wellness MCP connector (whoop, garmin, oura, fitbit, strava, polar, withings, apple-health, samsung-health, google-health, nourish, cycle-coach, cgm, air)."
+  };
+  process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
+  if (process.stderr.isTTY) {
+    process.stderr.write(`\n# Delx Wellness Onboarding (${flow.locale})\n`);
+    process.stderr.write(`Storage: ${flow.storage_path}\n`);
+    process.stderr.write(`Profile summary: ${payload.summary}\n`);
+    process.stderr.write(`Missing critical: ${payload.missing_critical.join(", ") || "none"}\n`);
+    process.stderr.write(`\n${flow.privacy_note}\n\nQuestions:\n`);
+    for (const q of flow.questions) {
+      process.stderr.write(`  - [${q.category}${q.required ? "*" : ""}] ${q.prompt}\n`);
+    }
+    process.stderr.write(`\n${payload.cross_connector_hint}\n`);
+  }
+  return 0;
+}
+
+export { COMMANDS };
 
 async function runDoctor(args: string[]): Promise<number> {
   const options = parseDoctorOptions(args);
@@ -94,6 +133,8 @@ Usage:
   samsung-health-mcp-server setup --client hermes          Save Hermes config and skill
   samsung-health-mcp-server doctor                         Check setup and next steps
   samsung-health-mcp-server doctor --client hermes --json  Check Hermes setup as JSON
+  samsung-health-mcp-server onboarding                     Print the shared Delx Wellness onboarding flow as JSON (+ TTY summary on stderr)
+  samsung-health-mcp-server onboarding --pt-BR             Onboarding flow in Brazilian Portuguese
 
 Required data:
   SAMSUNG_HEALTH_EXPORT_PATH=/path/to/SamsungHealth

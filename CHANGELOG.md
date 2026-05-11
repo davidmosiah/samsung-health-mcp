@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 - 2026-05-11
+
+- Add shared Delx Wellness profile support. Vendored copy of the canonical `profile-store` (delx-wellness commit ab83d1a) at `src/services/profile-store.ts` reads and writes `~/.delx-wellness/profile.json` — a single source of truth for preferred name, goals, devices, training/nutrition/exercise/agent preferences and safety flags shared across every Delx Wellness MCP connector. Local-export connector: this profile is the only piece of cross-connector context — neither cloud tokens nor health data leave disk.
+- Add `samsung_health_profile_get` — read-only return of the current shared profile plus a summary and missing-critical fields.
+- Add `samsung_health_profile_update` — partial-patch writer. Requires `explicit_user_intent=true` (otherwise returns USER_ACTION_REQUIRED). Rejects secret-like fields at write time.
+- Add `samsung_health_onboarding` — read-only 11-question onboarding flow (en / pt-BR) plus current profile state and cross-connector hint.
+- Add `samsung-health-mcp-server onboarding` CLI command — emits flow JSON to stdout and a TTY-gated Markdown summary to stderr.
+- `recommended_first_calls` on the agent manifest now leads with `samsung_health_profile_get`.
+- Tool count: 12 → 15.
+
 ## 0.3.0 - 2026-05-11
 
 - Add `samsung_health_quickstart` tool — personalized 3-step setup walkthrough adapted to current state (is `SAMSUNG_HEALTH_EXPORT_PATH` set? does the export folder/CSV/zip exist and parse?). Returns cross-connector hints to pair with wellness-nourish, wellness-cycle-coach, and wellness-cgm-mcp, and emphasizes the local-first / no-cloud-API privacy posture.
