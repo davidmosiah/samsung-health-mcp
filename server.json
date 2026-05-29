@@ -7,12 +7,12 @@
     "url": "https://github.com/davidmosiah/samsung-health-mcp",
     "source": "github"
   },
-  "version": "0.4.3",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "samsung-health-mcp-unofficial",
-      "version": "0.4.3",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       },
@@ -34,6 +34,13 @@
         {
           "name": "SAMSUNG_HEALTH_PRIVACY_MODE",
           "description": "summary, structured, or raw. Defaults to summary.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SAMSUNG_HEALTH_WATCH_PATH",
+          "description": "Optional folder watched for new Samsung Health exports. The newest export dropped here is auto-promoted to the active export on startup, live, and via the samsung_health_reimport tool.",
           "isRequired": false,
           "format": "string",
           "isSecret": false

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 - 2026-05-29
+
+### Added
+
+- **Watch-folder auto-reimport (no Android device required).** Point the connector at a folder via `SAMSUNG_HEALTH_WATCH_PATH`, `~/.samsung-health-mcp/config.json`, or `setup --watch-path <dir>`. When a newer Samsung Health export appears there — a `SamsungHealth` export directory of CSVs, a single `*.csv`, or any `*samsung*health*.zip` — it is auto-promoted to the active export and the snapshot + incremental caches are cleared so the next summary reflects the new data. Reconciliation runs on server startup, live via filesystem events on long-running transports, and on demand. Turns the one-shot manual-export reader into a recurring-refresh workflow.
+- **`samsung_health_reimport` tool** for an explicit re-scan of the watch folder (`check_only: true` previews without promoting; `force: true` re-promotes the newest export to force a cache refresh). Tool count: 17 → 18.
+- **`watch_folder` block + warning in `samsung_health_connection_status`** reporting the watch path, whether the active export is the latest, the last watch-import timestamp, and a warning when a newer export is waiting to be imported.
+- **`setup --watch-path <dir>`** persists the watch folder and immediately promotes any export already sitting in it.
+
+### Note
+
+- The native Android Health Connect bridge (live, no manual export) genuinely requires an Android device + native component and remains out of scope for this Node MCP server.
+
 ## 0.4.3 - 2026-05-20
 
 ### Added

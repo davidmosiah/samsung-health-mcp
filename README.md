@@ -91,6 +91,14 @@ Then add this to your MCP client config:
 
 For Claude Desktop, run `setup --client claude --export-path /path/to/SamsungHealth` and the snippet is written for you.
 
+**Keep it fresh — watch a folder (no Android device needed):**
+
+```bash
+npx -y samsung-health-mcp-unofficial setup --watch-path /path/to/health-exports
+```
+
+Now every time you download personal data from the Samsung Health app and drop the new `SamsungHealth` folder (or its `.zip`, or any `*samsung*health*.zip`) into that folder, the connector auto-promotes the newest one to be the active export — on server startup and live while it runs — and refreshes the cached summaries. You can also trigger a re-scan on demand with the `samsung_health_reimport` tool. This is the cross-platform recurring-refresh path; a fully live Samsung Health sync still needs a native Android Health Connect bridge.
+
 ## Try It With Your Agent
 
 ```text
@@ -144,6 +152,10 @@ Records:
 - `samsung_health_list_records` - bounded records by `type`, `start`, `end`, `limit`
 - `samsung_health_list_workouts` - bounded workout records
 
+Maintenance:
+
+- `samsung_health_reimport` - re-scan the watch folder (`SAMSUNG_HEALTH_WATCH_PATH`) and promote the newest export, refreshing summaries; pass `check_only: true` to preview without promoting
+
 ## Prompts And Resources
 
 Prompts:
@@ -173,11 +185,16 @@ Resources:
 SAMSUNG_HEALTH_EXPORT_PATH=/path/to/SamsungHealth  # folder, csv, or zip
 SAMSUNG_HEALTH_PRIVACY_MODE=summary                # summary | structured | raw
 SAMSUNG_HEALTH_TIMEZONE=America/Fortaleza          # local-day summaries
+SAMSUNG_HEALTH_WATCH_PATH=/path/to/health-exports  # optional: auto-reimport the newest export dropped here
 ```
 
 `setup` writes these settings into `~/.samsung-health-mcp/config.json` with `0600` permissions.
 
 `setup --auto-import` scans common local folders for the newest Samsung Health export and copies it to `~/.samsung-health-mcp/exports/` with restrictive permissions. Fully live Samsung Health sync still requires a separate Android bridge.
+
+### Watch folder (recurring auto-reimport)
+
+`setup --watch-path <dir>` (or `SAMSUNG_HEALTH_WATCH_PATH`) makes the connector treat a folder as a drop zone. On startup, while running (via filesystem events), and whenever the `samsung_health_reimport` tool is called, it promotes the newest Samsung Health export found there — a `SamsungHealth` export directory of CSVs, a single `*.csv`, or any `*samsung*health*.zip` — to be the active export and clears the snapshot + incremental caches so the next summary reflects the new data. `samsung_health_connection_status` reports the watch folder state and warns when a newer export is waiting. Fully live sync still requires a native Android Health Connect bridge.
 
 ## Hermes / Remote Setup
 

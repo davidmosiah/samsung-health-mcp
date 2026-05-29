@@ -6,10 +6,12 @@ import { hermesConfigSnippet, hermesSkillMarkdown, parseAgentClientName, type Ag
 import { discoverLatestExport, importSamsungHealthExport, type ImportResult } from "../services/import-export.js";
 import { writeLocalConfig } from "../services/local-config.js";
 import { parsePrivacyMode } from "../services/config.js";
+import { reconcileWatchFolder, type ReconcileResult } from "../services/watch.js";
 
 interface SetupOptions {
   client: AgentClientName;
   exportPath?: string;
+  watchPath?: string;
   importData: boolean;
   autoImport: boolean;
   privacyMode: "summary" | "structured" | "raw";
@@ -37,14 +39,24 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     SAMSUNG_HEALTH_PRIVACY_MODE: options.privacyMode,
     SAMSUNG_HEALTH_TIMEZONE: options.timezone,
     SAMSUNG_HEALTH_LAST_IMPORT_AT: importResult?.imported_at,
-    SAMSUNG_HEALTH_LAST_IMPORT_SOURCE_PATH: importResult?.source_path
+    SAMSUNG_HEALTH_LAST_IMPORT_SOURCE_PATH: importResult?.source_path,
+    SAMSUNG_HEALTH_WATCH_PATH: options.watchPath
   }, options.homeDir);
+  // If a watch folder was configured, promote any export already sitting in it so
+  // the first summary call works without a separate reimport step.
+  let watchResult: ReconcileResult | undefined;
+  if (options.watchPath) {
+    watchResult = await reconcileWatchFolder({ homeDir: options.homeDir });
+    if (watchResult.changed && watchResult.active_export_path) exportPath = watchResult.active_export_path;
+  }
   const clientConfig = writeClientConfig(options.client, options.homeDir);
   const output = {
     ok: true,
     config_path: configPath,
     client: options.client,
     export_path: exportPath,
+    watch_path: options.watchPath,
+    watch_reimport: watchResult,
     timezone: options.timezone,
     import: importResult,
     client_config_path: clientConfig.path,
@@ -62,6 +74,8 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     console.log("");
     console.log(`  ✓  Local config       ${configPath}`);
     if (exportPath) console.log(`  ✓  Export path        ${exportPath}`);
+    if (options.watchPath) console.log(`  ✓  Watch folder       ${options.watchPath}`);
+    if (watchResult?.changed) console.log(`  ✓  Reimported export  ${watchResult.active_export_path}`);
     if (importResult) console.log(`  ✓  Imported export    ${importResult.imported_path}`);
     if (options.timezone) console.log(`  ✓  Timezone           ${options.timezone}`);
     console.log(`  ✓  MCP client config  ${clientConfig.path}`);
@@ -76,9 +90,12 @@ function parseSetupOptions(args: string[]): SetupOptions {
   const flags = parseFlags(args);
   const importFlag = flags.get("import");
   const importPath = importFlag && importFlag !== "true" ? importFlag : undefined;
+  const watchFlag = flags.get("watch-path");
+  const watchPath = watchFlag && watchFlag !== "true" ? watchFlag : undefined;
   return {
     client: parseAgentClientName(flags.get("client")),
     exportPath: flags.get("export-path") ?? importPath,
+    watchPath,
     importData: flags.has("import") || flags.has("auto-import"),
     autoImport: flags.has("auto-import"),
     privacyMode: parsePrivacyMode(flags.get("privacy-mode")) as "summary" | "structured" | "raw",

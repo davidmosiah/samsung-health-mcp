@@ -9,7 +9,10 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, homeDir = homedi
     privacyMode: parsePrivacyMode(env.SAMSUNG_HEALTH_PRIVACY_MODE ?? local.SAMSUNG_HEALTH_PRIVACY_MODE),
     timezone: env.SAMSUNG_HEALTH_TIMEZONE ?? local.SAMSUNG_HEALTH_TIMEZONE ?? process.env.TZ ?? "UTC",
     lastImportAt: local.SAMSUNG_HEALTH_LAST_IMPORT_AT,
-    lastImportSourcePath: local.SAMSUNG_HEALTH_LAST_IMPORT_SOURCE_PATH
+    lastImportSourcePath: local.SAMSUNG_HEALTH_LAST_IMPORT_SOURCE_PATH,
+    watchPath: env.SAMSUNG_HEALTH_WATCH_PATH ?? local.SAMSUNG_HEALTH_WATCH_PATH,
+    lastWatchImportPath: local.SAMSUNG_HEALTH_LAST_WATCH_IMPORT_PATH,
+    lastWatchImportAt: local.SAMSUNG_HEALTH_LAST_WATCH_IMPORT_AT
   };
 }
 

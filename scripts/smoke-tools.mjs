@@ -15,6 +15,7 @@ const expectedTools = [
   'samsung_health_list_workouts',
   'samsung_health_onboarding',
   'samsung_health_privacy_audit',
+  'samsung_health_reimport',
   'samsung_health_profile_get',
   'samsung_health_profile_update',
   'samsung_health_quickstart',

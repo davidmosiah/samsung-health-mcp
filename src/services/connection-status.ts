@@ -9,6 +9,7 @@ import { inspectExportLocation } from "./samsung-health-export.js";
 import { buildExportFreshness } from "./freshness.js";
 import { getIncrementalCacheStats } from "./incremental-cache.js";
 import { localConfigPath } from "./local-config.js";
+import { getWatchStatus } from "./watch.js";
 
 export async function buildConnectionStatus(options: { client?: AgentClientName; env?: NodeJS.ProcessEnv; homeDir?: string } = {}) {
   const homeDir = options.homeDir ?? homedir();
@@ -19,9 +20,13 @@ export async function buildConnectionStatus(options: { client?: AgentClientName;
   const ok = nodeSupported && location.exists;
   const freshness = await buildExportFreshness(config.exportPath);
   const incrementalCache = await getIncrementalCacheStats(homeDir);
+  const watch = await getWatchStatus({ env: options.env ?? process.env, homeDir });
   const warnings: string[] = [];
   if (freshness.is_stale && freshness.exists) {
     warnings.push(`Export is stale (${freshness.days_since_export} days old). ${freshness.recommendation}`);
+  }
+  if (watch.configured && watch.watch_path_exists && watch.latest_export && watch.active_export_is_latest === false) {
+    warnings.push(`A newer Samsung Health export is available in the watch folder (${watch.latest_export.path}). Call samsung_health_reimport to refresh.`);
   }
   return {
     ok,
@@ -54,6 +59,15 @@ export async function buildConnectionStatus(options: { client?: AgentClientName;
       export_mtime_ms: incrementalCache.export_mtime_ms,
       category_count: incrementalCache.category_count,
       categories: incrementalCache.categories
+    },
+    watch_folder: {
+      configured: watch.configured,
+      watch_path: watch.watch_path,
+      watch_path_exists: watch.watch_path_exists,
+      latest_export_path: watch.latest_export?.path,
+      active_export_is_latest: watch.active_export_is_latest,
+      last_watch_import_at: watch.last_watch_import_at,
+      last_watch_import_path: watch.last_watch_import_path
     },
     warnings,
     client_checks: clientChecks,

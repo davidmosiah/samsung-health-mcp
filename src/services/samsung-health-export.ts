@@ -728,6 +728,16 @@ function cacheSnapshot(key: string, snapshot: SamsungHealthSnapshot): void {
   }
 }
 
+/**
+ * Drop the in-memory snapshot cache so the next summary/inventory call re-parses
+ * the export from disk. Call this after a reimport/promotion of a fresh export so
+ * long-running transports (HTTP) immediately reflect the new data. Stdio one-shot
+ * processes do not need this, but it is harmless there.
+ */
+export function clearSnapshotCache(): void {
+  SNAPSHOT_CACHE.clear();
+}
+
 function streamToString(stream: Readable): Promise<string> {
   return new Promise((resolvePromise, reject) => {
     const chunks: Buffer[] = [];
