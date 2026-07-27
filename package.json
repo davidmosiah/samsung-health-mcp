@@ -79,5 +79,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "main": "dist/index.js"
+  "main": "dist/index.js",
+  "overrides": {
+    "@hono/node-server": "2.0.12"
+  }
 }
