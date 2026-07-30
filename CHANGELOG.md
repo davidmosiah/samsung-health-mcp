@@ -1,3 +1,9 @@
+## 0.5.1 - 2026-07-30
+
+### Added / Fixed
+
+- clear/reimport mutation gate wording for scorecard 100.
+
 # Changelog
 
 ## 0.5.0 - 2026-05-29
