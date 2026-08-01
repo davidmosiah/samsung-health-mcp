@@ -29,6 +29,7 @@ import {
 } from "../services/profile-store.js";
 import { buildDailySummary, buildWeeklySummary, formatSummaryMarkdown } from "../services/summary.js";
 import { buildWellnessContext, formatWellnessContextMarkdown } from "../services/context.js";
+import { buildDemoPayload } from "../services/demo.js";
 import { buildDataInventory, formatInventoryMarkdown } from "../services/inventory.js";
 import { buildExportFreshness, formatExportFreshnessMarkdown } from "../services/freshness.js";
 import { clearCache } from "../services/incremental-cache.js";
@@ -161,74 +162,15 @@ export function registerSamsungHealthTools(server: McpServer): void {
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     async ({ response_format }) => {
-      const today = new Date().toISOString().slice(0, 10);
-      const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
-      const payload = {
-        ok: true,
-        is_demo: true,
-        source: "samsung_health_export",
-        device_hint: "Galaxy Watch 6",
-        sample: {
-          samsung_health_daily_summary: {
-            kind: "daily_summary",
-            source: "samsung_health",
-            date: today,
-            timezone: "America/Fortaleza",
-            activity: { steps: 6843, distance_km: 5.21, active_energy_kcal: 482, exercise_minutes: 28 },
-            heart: { resting_hr_bpm: 61, average_hr_bpm: 68, max_hr_bpm: 149, hrv_rmssd_ms: 42 },
-            sleep: { duration_min: 408, in_bed_min: 432, asleep_min: 408, rem_min: 79, deep_min: 66, light_min: 263, awakenings: 4, sleep_score: 78 },
-            respiratory: { respiratory_rate_brpm: 15, spo2_pct: 96 },
-            stress: { average_level: 24, max_level: 58, recovery_minutes: 142 },
-            workouts: 1,
-          },
-          samsung_health_weekly_summary: {
-            kind: "weekly_summary",
-            source: "samsung_health",
-            end_date: today,
-            days: 7,
-            requested_privacy_mode: "raw",
-            privacy_mode: "summary",
-            privacy_disclosure: "weekly_summary_always_aggregates_requested_privacy_mode_raw_was_not_applied_use_samsung_health_daily_summary_or_samsung_health_list_workouts_for_record_level_access",
-            window: { start: sevenDaysAgo, end: today },
-            activity: { avg_steps: 7124, total_distance_km: 38.4, avg_active_energy_kcal: 471, exercise_minutes_total: 198 },
-            heart: { avg_resting_hr_bpm: 60, avg_hrv_rmssd_ms: 44 },
-            sleep: { avg_duration_min: 414, avg_sleep_score: 76, nights_under_7h: 3 },
-            stress: { avg_level: 27, days_high_stress: 1 },
-            workouts: { count: 3, types: { run: 1, cycle: 1, strength: 1 } },
-            trend: "stable",
-          },
-          samsung_health_wellness_context: {
-            kind: "wellness_context",
-            source: "samsung_health",
-            window: "last_24h",
-            date: today,
-            resting_hr_bpm: 61,
-            hrv_rmssd_ms: 42,
-            sleep_duration_min: 408,
-            sleep_quality_band: "good",
-            stress_level: 24,
-            recent_training_load: "normal",
-            soreness: [],
-            injury_flags: [],
-            recommendation: "Resting HR within personal baseline, stress low, sleep adequate. Green light for moderate-intensity training. Watch for low-deep-sleep nights — consider a protein-forward dinner to support recovery.",
-          },
-        },
-        notes: [
-          "All sample data is synthetic; tagged with is_demo=true.",
-          "Real calls parse the local Samsung Health CSV/zip export — no Samsung, Health Connect, or other cloud APIs.",
-          "Pair with wellness-nourish for recovery-aware meal coaching and wellness-cycle-coach for cycle-aware load adjustments.",
-        ],
-      };
+      const payload = buildDemoPayload();
       const markdown = bulletList("Samsung Health Demo", {
         is_demo: true,
-        steps: 6843,
-        avg_hr_bpm: 68,
-        hrv_rmssd_ms: 42,
-        sleep_duration_min: 408,
-        sleep_score: 78,
-        stress_level: 24,
-        recommendation: payload.sample.samsung_health_wellness_context.recommendation,
+        steps: payload.sample.samsung_health_daily_summary.totals.steps,
+        average_bpm: payload.sample.samsung_health_daily_summary.heart.average_bpm,
+        hrv_sdnn_ms: payload.sample.samsung_health_daily_summary.heart.hrv_sdnn_ms,
+        hours_asleep: payload.sample.samsung_health_daily_summary.sleep.hours_asleep,
+        recent_training_load: payload.sample.samsung_health_wellness_context.recent_training_load,
+        telegram_summary: payload.sample.samsung_health_wellness_context.telegram_summary,
       });
       return makeResponse(payload, response_format, markdown);
     }

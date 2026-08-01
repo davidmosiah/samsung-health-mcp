@@ -1,3 +1,28 @@
+## 0.7.1 - 2026-08-01
+
+### Fixed
+
+- `samsung_health_demo` advertised a payload shape the server never returns. The
+  weekly example exposed `window`, `activity`, `stress` and `trend` — none of which
+  `buildWeeklySummary` emits — while omitting `totals`, `averages`, `trends`, `daily`
+  and `cache`, which it does. `wellness_context` invented `kind`, `window`,
+  `sleep_quality_band`, `stress_level` and `recommendation`, and named HRV
+  `hrv_rmssd_ms` when the builder returns `hrv_sdnn_ms` — a different metric.
+  An agent trusting the demo wrote a parser for fields that never arrive, which is
+  the opposite of that tool's stated purpose.
+- Examples now live in `src/services/demo.ts` and match the real builders field for
+  field, verified against `buildDailySummary`, `buildWeeklySummary` and
+  `buildWellnessContext` run over the repo fixture.
+
+### Added
+
+- `npm run test:demo-contract` — fails the build when a demo key set diverges from
+  the real output in either direction: keys the demo invents, and contract keys it
+  omits. Arrays compare as the union of their elements, so a week of mixed
+  populated/empty days is described completely. 173 key paths verified.
+  A static example nobody compares against reality is the same drift pattern that
+  let the privacy gate go vacuous in 0.7.0.
+
 # Changelog
 
 ## 0.7.0 - 2026-08-01
