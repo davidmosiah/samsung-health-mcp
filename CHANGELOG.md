@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0 - 2026-08-01
+
+### Fixed — the 0.6.0 privacy gate could not fail on the resource path
+
+- **`scripts/privacy-leak-test.mjs` asserted nothing for `samsung-health://summary/daily` and `summary/weekly`.** Both resources take no arguments: daily is always "today" and weekly is always "the last 7 days". The fixture is dated 2026-05-01, so the resources read an empty window and the leak assertions passed against *any* code — including the 0.5.1 build that really did leak. Measured: reading the daily resource on the pre-fix build with the committed fixture finds **zero** of the 11 forbidden needles; the same read against a fixture dated today leaks `-11.111111`, `-22.222222`, `FAKE-DEVICE-UUID`, `SYNTHETIC-FREE-TEXT-NOTE`, `999.9`, `latitude`, `longitude` and `deviceuuid` in all four privacy modes. **The 0.6.0 fix was correct; only the gate protecting it was blind**, and it was getting worse with time — a weekly window can never reach back to May 2026.
+  - The gate now writes a synthetic export dated *today* (rows at 12:00Z for yesterday/today/tomorrow, obviously fake coordinates) and reads the resources against it.
+  - Every resource check asserts **non-vacuity first** — the workout carrying the sensitive columns is really inside the window that was read — and only then asserts the payload is clean. A future change that stops exercising the path fails loudly instead of going quietly green.
+  - Same treatment for `samsung_health_daily_summary` called with **no `date`**, the default an agent actually sends, which the May fixture could never cover either. `samsung_health_weekly_summary` is now in the leak sweep as well.
+
+### Changed (output contract) — `samsung_health_weekly_summary` no longer echoes a privacy mode it did not apply
+
+- The weekly rollup accepted `privacy_mode` and silently discarded it: asking for `raw` returned `privacy_mode: "summary"` with no explanation, so an agent could not tell an override from an export with no workouts. The aggregation itself is correct and stays — honouring `raw` here would open a 30-day path to raw workout records — but the answer now says so:
+  - **`requested_privacy_mode`** — what the caller asked for (falls back to `SAMSUNG_HEALTH_PRIVACY_MODE`).
+  - **`privacy_mode`** — what was actually applied. Always `summary`.
+  - **`privacy_disclosure`** — names the override explicitly (`weekly_summary_always_aggregates_requested_privacy_mode_raw_was_not_applied_use_samsung_health_daily_summary_or_samsung_health_list_workouts_for_record_level_access`) and points at the tools that do serve record-level access.
+- The weekly tool and the `samsung-health://summary/weekly` resource now pass the requested/configured mode through instead of dropping it on the floor. Per-day `daily[].workouts.privacy_mode` still reports the applied mode, which is now true rather than divergent.
+
 ## 0.6.0 - 2026-08-01
 
 ### Fixed — privacy (high severity)

@@ -34,8 +34,24 @@ export async function buildDailySummary(exportPath: string | undefined, date?: s
   });
 }
 
+/**
+ * The privacy mode the weekly rollup always applies, regardless of what the
+ * caller asked for. A 30-day window of raw workouts is not what a weekly
+ * rollup is for, so the aggregation is not negotiable — but the answer must
+ * say so instead of silently echoing a different mode than the one requested.
+ */
+const WEEKLY_EFFECTIVE_PRIVACY_MODE: PrivacyMode = "summary";
+
+function weeklyPrivacyDisclosure(requested: PrivacyMode): string {
+  if (requested === WEEKLY_EFFECTIVE_PRIVACY_MODE) {
+    return "weekly_summary_always_aggregates_individual_workouts_are_never_returned";
+  }
+  return `weekly_summary_always_aggregates_requested_privacy_mode_${requested}_was_not_applied_use_samsung_health_daily_summary_or_samsung_health_list_workouts_for_record_level_access`;
+}
+
 export async function buildWeeklySummary(exportPath: string | undefined, endDate?: string, days = 7, options: SummaryOptions = {}) {
   const timezone = options.timezone ?? "UTC";
+  const requestedPrivacyMode = options.privacyMode ?? WEEKLY_EFFECTIVE_PRIVACY_MODE;
   const normalizedDays = Math.min(Math.max(Math.trunc(days), 1), 30);
   const targetEndDate = endDate ?? todayIsoDate(timezone);
   const startDate = addCalendarDays(targetEndDate, -(normalizedDays - 1));
@@ -60,8 +76,10 @@ export async function buildWeeklySummary(exportPath: string | undefined, endDate
         // The weekly summary never returns individual workout records: a
         // 30-day window of raw workouts is not what a weekly rollup is for.
         // Use samsung_health_daily_summary or samsung_health_list_workouts
-        // with an explicit privacy_mode for record-level access.
-        privacyMode: "summary"
+        // with an explicit privacy_mode for record-level access. The rollup
+        // reports `requested_privacy_mode` next to this effective one so the
+        // agent is never told a mode it did not ask for.
+        privacyMode: WEEKLY_EFFECTIVE_PRIVACY_MODE
       }
     ));
   }
@@ -82,6 +100,13 @@ export async function buildWeeklySummary(exportPath: string | undefined, endDate
     end_date: targetEndDate,
     days: normalizedDays,
     timezone,
+    // What the caller asked for, what was actually applied, and why they can
+    // differ. Never report only the effective mode: an agent that asked for
+    // `raw` and reads `privacy_mode: "summary"` cannot tell whether the export
+    // has no workouts or whether the request was quietly overridden.
+    requested_privacy_mode: requestedPrivacyMode,
+    privacy_mode: WEEKLY_EFFECTIVE_PRIVACY_MODE,
+    privacy_disclosure: weeklyPrivacyDisclosure(requestedPrivacyMode),
     generated_at: snapshot.generated_at,
     source: snapshot.source,
     export_modified_at: snapshot.location.modified_at,

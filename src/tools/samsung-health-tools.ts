@@ -187,6 +187,9 @@ export function registerSamsungHealthTools(server: McpServer): void {
             source: "samsung_health",
             end_date: today,
             days: 7,
+            requested_privacy_mode: "raw",
+            privacy_mode: "summary",
+            privacy_disclosure: "weekly_summary_always_aggregates_requested_privacy_mode_raw_was_not_applied_use_samsung_health_daily_summary_or_samsung_health_list_workouts_for_record_level_access",
             window: { start: sevenDaysAgo, end: today },
             activity: { avg_steps: 7124, total_distance_km: 38.4, avg_active_energy_kcal: 471, exercise_minutes_total: 198 },
             heart: { avg_resting_hr_bpm: 60, avg_hrv_rmssd_ms: 44 },
@@ -376,10 +379,13 @@ export function registerSamsungHealthTools(server: McpServer): void {
     description: "Build a weekly wellness summary from local Samsung Health export data. It is not live Samsung Health and not medical advice.",
     inputSchema: WeeklySummaryInputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }, async ({ end_date, days, timezone, response_format }) => {
+  }, async ({ end_date, days, timezone, privacy_mode, response_format }) => {
     try {
       const config = getConfig();
-      const summary = await buildWeeklySummary(config.exportPath, end_date, days, { timezone: timezone ?? config.timezone });
+      const summary = await buildWeeklySummary(config.exportPath, end_date, days, {
+        timezone: timezone ?? config.timezone,
+        privacyMode: privacy_mode ?? config.privacyMode
+      });
       return makeResponse(summary, response_format, formatSummaryMarkdown(summary));
     } catch (error) {
       return makeError((error as Error).message);

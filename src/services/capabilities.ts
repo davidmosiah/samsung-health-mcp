@@ -45,7 +45,8 @@ export function buildCapabilities() {
       { mode: "raw", use_when: "The user explicitly asks for raw export record attributes." }
     ],
     privacy_notes: [
-      "privacy_mode (default `summary`) applies to samsung_health_list_records, samsung_health_list_workouts and samsung_health_daily_summary; samsung_health_weekly_summary never returns individual workout records.",
+      "privacy_mode (default `summary`) applies to samsung_health_list_records, samsung_health_list_workouts and samsung_health_daily_summary.",
+      "samsung_health_weekly_summary accepts privacy_mode but always aggregates: it never returns individual workout records. The response reports requested_privacy_mode alongside the applied privacy_mode and a privacy_disclosure saying the request was not honoured, so the mode you asked for is never echoed back as if it had been applied.",
       "Record and workout metadata is allowlisted at parse time: GPS coordinates, altitude, device identifiers and free-text user fields are dropped before any response, including `raw`. Dropped columns are reported as withheld_metadata_count."
     ],
     links: {
