@@ -1,10 +1,30 @@
+# Changelog
+
+## 0.6.0 - 2026-08-01
+
+### Fixed — privacy (high severity)
+
+- **`samsung_health_daily_summary` and the `samsung-health://summary/daily` resource leaked location and device identity.** Both returned the raw workout objects, whose `metadata` carried every column of the exercise CSV verbatim: `start_latitude`, `start_longitude`, `end_latitude`, `end_longitude`, `max_altitude`, the stable hardware id `deviceuuid`, and free-text user fields such as `com.samsung.health.exercise.custom`. In practice an agent asking "how was my day?" received the exact GPS coordinates of the user's home and running route, plus an identifier that follows the device across exports.
+  - `SAMSUNG_HEALTH_PRIVACY_MODE` was ignored on this path: `summary`, `structured` and `raw` all returned the same full dump, contradicting the documented default.
+  - With the default `response_format: "markdown"` the rendered text did not show the workouts, but `structuredContent` still carried the whole object — so the leak was invisible to a human reading the reply while the host and the model received the coordinates anyway.
+- **Root cause:** `buildDailySummary` never accepted a privacy mode, so `summarizeDay` fell through to the "include raw workouts" branch (the weekly summary already suppressed them), and `buildMetadata` copied every CSV column with no filtering.
+
+### Changed (output contract)
+
+- `samsung_health_daily_summary` accepts `privacy_mode` (`summary` | `structured` | `raw`, default from `SAMSUNG_HEALTH_PRIVACY_MODE`, itself defaulting to `summary`). The daily-summary resource now follows the server privacy mode.
+- `workouts` in daily and weekly summaries gained `privacy_mode` and `disclosure` fields, matching `samsung_health_list_workouts`. In the default `summary` mode `workouts.records` is now `[]` (aggregates — `count`, `total_duration_minutes`, `activity_counts` — are unchanged); individual records require an explicit `structured` or `raw` request. `samsung_health_weekly_summary` never returns individual workout records.
+- **Record and workout `metadata` is now allowlisted instead of copied wholesale**, at parse time, so no consumer — including `raw` mode, the inventory's `metadata_keys`, and any future caller — can reach coordinates, altitude, hardware identifiers or free-text fields. An allowlist rather than a denylist because Samsung adds export columns whenever the app changes; a denylist only covers the leaks already known. Dropped columns are reported as a `withheld_metadata_count`.
+- `deviceuuid` is no longer promoted into `sourceName` (it matched the `device` alias used for source inference).
+
+### Added
+
+- `npm run test:privacy` (`scripts/privacy-leak-test.mjs`), wired into `npm test`. The `exercise` fixture now carries synthetic GPS/device columns (obviously fake: `-11.111111`, `FAKE-DEVICE-UUID-…`) — no fixture had a latitude column before, which is why every gate stayed green through this bug. The test asserts that neither the sensitive values nor their column names appear in `content` **or** `structuredContent`, across tools and resources, in every privacy mode.
+
 ## 0.5.1 - 2026-07-30
 
 ### Added / Fixed
 
 - clear/reimport mutation gate wording for scorecard 100.
-
-# Changelog
 
 ## 0.5.0 - 2026-05-29
 

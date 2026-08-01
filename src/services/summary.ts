@@ -1,9 +1,16 @@
-import type { SamsungHealthRecord, SamsungHealthWorkout } from "../types.js";
+import type { PrivacyMode, SamsungHealthRecord, SamsungHealthWorkout } from "../types.js";
+import { workoutPrivacyView } from "./privacy.js";
 import { getExportSnapshot, parseSamsungDate, recordOverlaps } from "./samsung-health-export.js";
 import { addCalendarDays, dayBounds, todayIsoDate } from "./time.js";
 
 interface SummaryOptions {
   timezone?: string;
+  /**
+   * How much workout detail the caller is allowed to see. Defaults to
+   * `summary` — the same default as SAMSUNG_HEALTH_PRIVACY_MODE — so the
+   * summary never returns individual workout records unless asked.
+   */
+  privacyMode?: PrivacyMode;
 }
 
 interface DayWindow {
@@ -22,7 +29,8 @@ export async function buildDailySummary(exportPath: string | undefined, date?: s
     source: snapshot.source,
     timezone,
     cacheHit: snapshot.cache.hit,
-    exportModifiedAt: snapshot.location.modified_at
+    exportModifiedAt: snapshot.location.modified_at,
+    privacyMode: options.privacyMode ?? "summary"
   });
 }
 
@@ -49,7 +57,11 @@ export async function buildWeeklySummary(exportPath: string | undefined, endDate
         timezone,
         cacheHit: snapshot.cache.hit,
         exportModifiedAt: snapshot.location.modified_at,
-        includeWorkoutRecords: false
+        // The weekly summary never returns individual workout records: a
+        // 30-day window of raw workouts is not what a weekly rollup is for.
+        // Use samsung_health_daily_summary or samsung_health_list_workouts
+        // with an explicit privacy_mode for record-level access.
+        privacyMode: "summary"
       }
     ));
   }
@@ -110,8 +122,10 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
   timezone: string;
   cacheHit: boolean;
   exportModifiedAt?: string;
-  includeWorkoutRecords?: boolean;
+  privacyMode?: PrivacyMode;
 }) {
+  const privacyMode = options.privacyMode ?? "summary";
+  const workoutView = workoutPrivacyView(workouts, privacyMode, options.timezone);
   const steps = sumType(records, "samsung_health_steps");
   const activeEnergy = sumType(records, "samsung_health_active_energy");
   const distance = sumType(records, "samsung_health_distance");
@@ -164,7 +178,9 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
       count: workouts.length,
       total_duration_minutes: workoutDuration,
       activity_counts: countBy(workouts, (workout) => workout.workoutActivityType || "unknown"),
-      records: options.includeWorkoutRecords === false ? undefined : workouts
+      privacy_mode: privacyMode,
+      records: workoutView.workouts,
+      disclosure: workoutView.disclosure
     },
     data_quality: {
       record_count: records.length,

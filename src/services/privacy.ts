@@ -1,6 +1,69 @@
 import type { SamsungHealthRecord, SamsungHealthWorkout, PrivacyMode } from "../types.js";
 import { dateOnlyInTimezone, parseFlexibleDate } from "./time.js";
 
+/**
+ * Metadata columns that may be carried out of a Samsung Health export.
+ *
+ * This is an ALLOWLIST on purpose. A denylist only protects against the leaks
+ * we already know about, and Samsung adds columns to the personal-data export
+ * whenever the app changes: a new `route_points` or `home_location` column
+ * would ship straight to the agent under a denylist. Anything not recognised
+ * here is dropped at parse time — before it reaches the snapshot cache, any
+ * tool, any resource, or `raw` mode — and only counted, so the agent knows
+ * data was withheld without learning which private columns exist.
+ *
+ * Explicitly NOT allowlisted (the 0.6.0 leak): `*_latitude`, `*_longitude`,
+ * `*_altitude`, `deviceuuid`, `datauuid`, `location_data`, `live_data`,
+ * `comment`, `com.samsung.health.exercise.custom` and any free-text field.
+ */
+const SAFE_METADATA_KEY_NAMES = [
+  // provenance / plumbing
+  "source_file", "source_name", "source", "pkg_name", "package_name",
+  // time
+  "time", "start_time", "end_time", "create_time", "update_time", "time_offset",
+  "date", "start_date", "end_date", "create_date", "update_date",
+  // units and enumerations
+  "unit", "type", "stage", "status", "quality",
+  // activity
+  "duration", "elapsed_time", "distance", "count", "steps", "step_count",
+  "calorie", "calories", "kcal", "energy", "speed", "pace", "cadence",
+  "incline", "power", "vo2_max", "sweat_loss", "score", "efficiency",
+  // heart / respiration
+  "heart_rate", "hrv", "rmssd", "sdnn", "bpm",
+  "oxygen_saturation", "spo2", "saturation", "respiratory_rate", "breathing_rate",
+  // body
+  "weight", "height", "body_fat", "muscle_mass", "body_water", "bmi", "bmr",
+  "basal_metabolic_rate", "temperature", "stress"
+];
+
+const SAFE_METADATA_PATTERN = new RegExp(`(^|_)(${SAFE_METADATA_KEY_NAMES.join("|")})$`);
+
+/** Key added to sanitized metadata reporting how many columns were dropped. */
+export const WITHHELD_METADATA_COUNT_KEY = "withheld_metadata_count";
+
+function normalizeMetadataKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+export function isSafeMetadataKey(key: string): boolean {
+  return SAFE_METADATA_PATTERN.test(normalizeMetadataKey(key));
+}
+
+/**
+ * Keep only allowlisted metadata columns. Applied at parse time so no consumer
+ * — including a future one — can opt back into geolocation or hardware ids.
+ */
+export function sanitizeMetadata(metadata: Record<string, string>): Record<string, string> {
+  const safe: Record<string, string> = {};
+  let withheld = 0;
+  for (const [key, value] of Object.entries(metadata)) {
+    if (isSafeMetadataKey(key)) safe[key] = value;
+    else withheld += 1;
+  }
+  if (withheld > 0) safe[WITHHELD_METADATA_COUNT_KEY] = String(withheld);
+  return safe;
+}
+
 export function recordPrivacyView(records: SamsungHealthRecord[], mode: PrivacyMode, timezone = "UTC") {
   if (mode === "raw") {
     return {

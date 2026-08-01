@@ -4,6 +4,7 @@ import type { Readable } from "node:stream";
 import yauzl from "yauzl";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "../constants.js";
 import type { SamsungHealthRecord, SamsungHealthWorkout } from "../types.js";
+import { sanitizeMetadata } from "./privacy.js";
 import { parseFlexibleDate } from "./time.js";
 import {
   getLastParsedAt,
@@ -677,17 +678,32 @@ function normalizeDistance(value: number | undefined, row: CsvRow): number | und
   return round(value);
 }
 
+/**
+ * Columns that identify a device or a row rather than naming a data source.
+ * `deviceuuid` matches the `device` alias below, so without this guard a stable
+ * hardware identifier was promoted into `sourceName` and shipped in raw mode.
+ */
+const IDENTIFIER_KEY_PATTERN = /uuid|(^|_)id$|serial|imei|mac_address/;
+
 function inferSourceName(row: CsvRow): string | undefined {
-  return readString(row, ["source", "source_name", "device", "device_name", "pkg_name", "package_name"]);
+  const named = Object.fromEntries(
+    Object.entries(row).filter(([key]) => !IDENTIFIER_KEY_PATTERN.test(normalizeKey(key)))
+  );
+  return readString(named, ["source", "source_name", "device", "device_name", "pkg_name", "package_name"]);
 }
 
+/**
+ * Build record/workout metadata from a CSV row. Columns are allowlisted by
+ * `sanitizeMetadata`, so geolocation, hardware identifiers and free-text user
+ * fields never enter the parsed snapshot — not even for `privacy_mode: "raw"`.
+ */
 function buildMetadata(row: CsvRow, sourceName: string): Record<string, string> {
-  const metadata: Record<string, string> = { source_file: sourceName };
+  const metadata: Record<string, string> = {};
   for (const [key, value] of Object.entries(row)) {
     if (!value) continue;
     metadata[key] = value;
   }
-  return metadata;
+  return { source_file: sourceName, ...sanitizeMetadata(metadata) };
 }
 
 function safeTypeFromFile(normalizedFile: string): string {

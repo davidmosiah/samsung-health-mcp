@@ -42,6 +42,7 @@ export const WorkoutListInputSchema = z.object({
 export const DailySummaryInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("YYYY-MM-DD local date. Defaults to today in the configured timezone."),
   timezone: TimezoneSchema,
+  privacy_mode: PrivacyModeSchema,
   response_format: ResponseFormatSchema
 }).strict();
 

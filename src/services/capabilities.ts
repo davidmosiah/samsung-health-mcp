@@ -44,6 +44,10 @@ export function buildCapabilities() {
       { mode: "structured", use_when: "The user wants bounded records without source names, creation dates or raw metadata." },
       { mode: "raw", use_when: "The user explicitly asks for raw export record attributes." }
     ],
+    privacy_notes: [
+      "privacy_mode (default `summary`) applies to samsung_health_list_records, samsung_health_list_workouts and samsung_health_daily_summary; samsung_health_weekly_summary never returns individual workout records.",
+      "Record and workout metadata is allowlisted at parse time: GPS coordinates, altitude, device identifiers and free-text user fields are dropped before any response, including `raw`. Dropped columns are reported as withheld_metadata_count."
+    ],
     links: {
       github: "https://github.com/davidmosiah/samsung-health-mcp",
       samsung_health_data_sdk: "https://developer.samsung.com/health/data/overview.html",

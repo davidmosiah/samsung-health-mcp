@@ -1,2 +1,2 @@
-start_time,end_time,exercise_type,duration,distance,distance_unit,calorie,source_name
-2026-05-01T18:10:00-03:00,2026-05-01T18:42:00-03:00,running,1920000,5200,m,410,Galaxy Watch
+start_time,end_time,exercise_type,duration,distance,distance_unit,calorie,start_latitude,start_longitude,end_latitude,end_longitude,max_altitude,deviceuuid,com.samsung.health.exercise.custom,source_name
+2026-05-01T18:10:00-03:00,2026-05-01T18:42:00-03:00,running,1920000,5200,m,410,-11.111111,-22.222222,-33.333333,-44.444444,999.9,FAKE-DEVICE-UUID-0000-SYNTHETIC,SYNTHETIC-FREE-TEXT-NOTE,Galaxy Watch

@@ -340,13 +340,16 @@ export function registerSamsungHealthTools(server: McpServer): void {
 
   server.registerTool("samsung_health_daily_summary", {
     title: "Samsung Health Daily Summary",
-    description: "Build a daily wellness summary from local Samsung Health export data. It is not live Samsung Health and not medical advice.",
+    description: "Build a daily wellness summary from local Samsung Health export data. Individual workout records follow privacy_mode (default `summary`: aggregates only). It is not live Samsung Health and not medical advice.",
     inputSchema: DailySummaryInputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }, async ({ date, timezone, response_format }) => {
+  }, async ({ date, timezone, privacy_mode, response_format }) => {
     try {
       const config = getConfig();
-      const summary = await buildDailySummary(config.exportPath, date, { timezone: timezone ?? config.timezone });
+      const summary = await buildDailySummary(config.exportPath, date, {
+        timezone: timezone ?? config.timezone,
+        privacyMode: privacy_mode ?? config.privacyMode
+      });
       return makeResponse(summary, response_format, formatSummaryMarkdown(summary));
     } catch (error) {
       return makeError((error as Error).message);

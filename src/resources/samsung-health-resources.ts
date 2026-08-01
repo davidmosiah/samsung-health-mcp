@@ -45,7 +45,7 @@ export function registerSamsungHealthResources(server: McpServer): void {
     mimeType: "application/json"
   }, async (uri) => {
     const config = getConfig();
-    return jsonResource(uri, await buildDailySummary(config.exportPath, undefined, { timezone: config.timezone }));
+    return jsonResource(uri, await buildDailySummary(config.exportPath, undefined, { timezone: config.timezone, privacyMode: config.privacyMode }));
   });
 
   server.registerResource("samsung_health_weekly_summary_resource", "samsung-health://summary/weekly", {
