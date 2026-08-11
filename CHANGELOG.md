@@ -25,6 +25,11 @@
 
 # Changelog
 
+## 0.7.2
+
+- Security: override `fast-uri@3.1.5` and `ip-address@10.4.0` (high transitive).
+
+
 ## 0.7.0 - 2026-08-01
 
 ### Fixed — the 0.6.0 privacy gate could not fail on the resource path
