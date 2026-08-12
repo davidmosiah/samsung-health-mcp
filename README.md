@@ -31,6 +31,19 @@
 
 ---
 
+## HTTP (v2 stateless)
+
+Default is **stdio**. Optional Streamable HTTP — no session id, JSON responses, loopback only:
+
+```bash
+npx -y samsung-health-mcp-unofficial --http
+# GET  http://127.0.0.1:3000/health
+# POST http://127.0.0.1:3000/mcp   (sessionless)
+```
+
+Env: `SAMSUNG_HEALTH_MCP_HOST`, `SAMSUNG_HEALTH_MCP_PORT`, `SAMSUNG_HEALTH_MCP_TRANSPORT=http`.
+
+
 <!-- /delx-wellness header v2 -->
 
 **Unofficial local-first MCP server that reads Samsung Health personal-data CSV/ZIP exports and exposes them safely to AI agents.**
