@@ -8,6 +8,7 @@ import {
   missingCriticalFields
 } from "../services/profile-store.js";
 import { runSetupCommand } from "./setup.js";
+import { runToolCall } from "./tool-calls.js";
 
 const COMMANDS = ["setup", "doctor", "status", "onboarding", "version", "help"] as const;
 
@@ -16,6 +17,7 @@ export async function runCliCommand(args: string[]): Promise<number | undefined>
   if (!command || command === "--http") return undefined;
   if (command === "setup") return runSetupCommand(rest);
   if (command === "doctor" || command === "status") return runDoctor(rest);
+  if (command === "call") return runToolCall(rest);
   if (command === "onboarding") return runOnboarding(rest);
   if (command === "version" || command === "--version" || command === "-v") {
     console.log(SERVER_VERSION);

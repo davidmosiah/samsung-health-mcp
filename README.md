@@ -260,3 +260,12 @@ curl http://127.0.0.1:3000/health
 - 🐦 **Updates** — [@delx369](https://x.com/delx369) on X
 - 🌐 **Site** — [wellness.delx.ai](https://wellness.delx.ai)
 
+## Skill or MCP
+
+Same package, two doors. MCP registers tools on stdio/HTTP. The [skill](skill/SKILL.md) can drive the **same** tools through the CLI when the client has no MCP:
+
+```bash
+npx -y samsung-health-mcp-unofficial call samsung_health_connection_status --json '{}'
+```
+
+Copy `skill/SKILL.md` into your agent skills dir.
