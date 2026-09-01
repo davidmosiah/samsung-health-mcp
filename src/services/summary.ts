@@ -262,10 +262,13 @@ function sleepBreakdown(records: SamsungHealthRecord[]) {
   for (const record of stageRecords) {
     const minutes = recordDurationMinutes(record);
     const stage = sleepStageName(record.value);
-    stages[stage] = round((stages[stage] ?? 0) + minutes) ?? 0;
-    if (/asleep|sleep|light|deep|rem/i.test(record.value ?? "")) minutesAsleep += minutes;
-    if (/in.?bed/i.test(record.value ?? "")) minutesInBed += minutes;
-    if (/awake|wake/i.test(record.value ?? "")) minutesAwake += minutes;
+    const namedStage = /^(asleep|sleep|light|deep|rem|awake|wake|in_?bed)$/.test(stage);
+    if (record.type === "samsung_health_sleep_stage" || namedStage) {
+      stages[stage] = round((stages[stage] ?? 0) + minutes) ?? 0;
+    }
+    if (/^(asleep|sleep|light|deep|rem)$/.test(stage)) minutesAsleep += minutes;
+    if (record.type === "samsung_health_sleep" || /^in_?bed$/.test(stage)) minutesInBed += minutes;
+    if (/^(awake|wake)$/.test(stage)) minutesAwake += minutes;
   }
 
   return {
@@ -279,6 +282,15 @@ function sleepBreakdown(records: SamsungHealthRecord[]) {
 
 function sleepStageName(value: string | undefined): string {
   if (!value) return "unknown";
+  // Samsung's documented SleepStage constants:
+  // 40001 awake, 40002 light, 40003 deep, 40004 REM.
+  const samsungStage = ({
+    "40001": "awake",
+    "40002": "light",
+    "40003": "deep",
+    "40004": "rem"
+  } as const)[value.trim() as "40001" | "40002" | "40003" | "40004"];
+  if (samsungStage) return samsungStage;
   return value
     .replace(/^com\.samsung\.health\./i, "")
     .replace(/([a-z])([A-Z])/g, "$1_$2")

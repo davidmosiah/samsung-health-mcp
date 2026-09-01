@@ -84,6 +84,7 @@ type CsvRow = Record<string, string>;
 
 const SNAPSHOT_CACHE = new Map<string, SamsungHealthSnapshot>();
 const MAX_SNAPSHOT_CACHE_ENTRIES = 6;
+const MIN_SAMSUNG_HEALTH_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
 
 const DATE_KEYS = {
   start: ["start_time", "starttime", "start_date", "startdate", "start", "from_time", "from", "day_time", "record_time", "measurement_time", "timestamp", "date"],
@@ -283,7 +284,9 @@ export function parseSamsungDate(value: string | undefined): Date | undefined {
     if (Number.isFinite(numeric)) {
       const milliseconds = numeric > 10_000_000_000 ? numeric : numeric * 1000;
       const parsed = new Date(milliseconds);
-      if (!Number.isNaN(parsed.getTime())) return parsed;
+      // Samsung's numeric identifiers and schema versions can otherwise look
+      // like Unix timestamps from the 1970s when a column alias is missing.
+      if (!Number.isNaN(parsed.getTime()) && milliseconds >= MIN_SAMSUNG_HEALTH_TIMESTAMP_MS) return parsed;
     }
   }
   const compact = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?$/.exec(trimmed);
@@ -325,7 +328,7 @@ async function parseExportEntities(location: ExportLocation, visitor: EntityVisi
 }
 
 function rowToRecord(sourceName: string, row: CsvRow): SamsungHealthRecord | undefined {
-  const normalizedFile = normalizeKey(sourceName);
+  const normalizedFile = normalizeKey(basename(sourceName));
   const type = inferRecordType(normalizedFile, row);
   if (!type) return undefined;
 
@@ -352,8 +355,7 @@ function rowToRecord(sourceName: string, row: CsvRow): SamsungHealthRecord | und
 }
 
 function rowToWorkout(sourceName: string, row: CsvRow): SamsungHealthWorkout | undefined {
-  const normalizedFile = normalizeKey(sourceName);
-  if (!normalizedFile.includes("exercise") && !normalizedFile.includes("workout")) return undefined;
+  if (!isWorkoutSource(sourceName)) return undefined;
   const startDate = bestDate(row, DATE_KEYS.start);
   const endDate = bestDate(row, DATE_KEYS.end) ?? startDate;
   const duration = durationMinutes(row, startDate, endDate);
@@ -380,7 +382,36 @@ function rowToWorkout(sourceName: string, row: CsvRow): SamsungHealthWorkout | u
 
 function inferRecordType(normalizedFile: string, row: CsvRow): string | undefined {
   const rowKeys = Object.keys(row).map(normalizeKey).join(" ");
+  const samsungType = samsungDataTypeFromFile(normalizedFile);
+  if (samsungType) {
+    if (samsungType === "step_daily_trend") {
+      const sourceType = readNumber(row, ["source_type"]);
+      return sourceType === undefined || sourceType === -2
+        ? "samsung_health_steps"
+        : "samsung_health_step_daily_trend_source";
+    }
+    if (samsungType === "step_count") return "samsung_health_steps";
+    if (samsungType.startsWith("tracker_pedometer_")) return `samsung_health_${samsungType}`;
+    if (samsungType === "sleep_stage") return "samsung_health_sleep_stage";
+    if (samsungType === "sleep") return "samsung_health_sleep";
+    if (samsungType === "resting_heart_rate") return "samsung_health_resting_heart_rate";
+    if (samsungType === "hrv" || samsungType === "heart_rate_variability") return "samsung_health_hrv";
+    if (samsungType === "heart_rate" || samsungType === "tracker_heart_rate") return "samsung_health_heart_rate";
+    if (samsungType === "oxygen_saturation" || samsungType === "tracker_oxygen_saturation") return "samsung_health_oxygen_saturation";
+    if (samsungType === "respiratory_rate") return "samsung_health_respiratory_rate";
+    if (samsungType === "weight" || samsungType === "body_weight") return "samsung_health_body_weight";
+    if (samsungType === "body_fat") return "samsung_health_body_fat";
+    if (samsungType === "distance") return "samsung_health_distance";
+    if (samsungType === "calorie" || samsungType === "calories" || samsungType === "active_energy") return "samsung_health_active_energy";
+    return `samsung_health_${samsungType}`;
+  }
   const haystack = `${normalizedFile} ${rowKeys}`;
+  // A Samsung export can contain a daily total, raw pedometer samples, a day
+  // summary and recommendation rows at the same time. Only the daily trend is
+  // a canonical step total; treating every file containing "step" as steps
+  // makes daily summaries count the same activity multiple times.
+  if (normalizedFile.includes("step_daily_trend")) return "samsung_health_steps";
+  if (normalizedFile.includes("pedometer_")) return `samsung_health_${safeTypeFromFile(normalizedFile)}`;
   if (haystack.includes("step")) return "samsung_health_steps";
   if (haystack.includes("sleep_stage")) return "samsung_health_sleep_stage";
   if (haystack.includes("sleep")) return "samsung_health_sleep";
@@ -410,7 +441,7 @@ function metricForRecord(type: string, normalizedFile: string, row: CsvRow, star
     case "samsung_health_oxygen_saturation":
       return { value: readNumber(row, ["spo2", "oxygen_saturation", "saturation", "value"]), unit: "%" };
     case "samsung_health_respiratory_rate":
-      return { value: readNumber(row, ["respiratory_rate", "breathing_rate", "value"]), unit: "breaths/min" };
+      return { value: readNumber(row, ["respiratory_rate", "breathing_rate", "average", "value"]), unit: "breaths/min" };
     case "samsung_health_body_weight":
       return { value: readNumber(row, ["weight", "body_weight", "value"]), unit: readString(row, ["unit"]) ?? "kg" };
     case "samsung_health_body_fat":
@@ -558,8 +589,14 @@ function countZipCsvEntries(zipPath: string): Promise<number> {
 
 function parseCsv(text: string): CsvRow[] {
   const trimmed = text.replace(/^\uFEFF/, "");
-  const firstLine = trimmed.split(/\r?\n/, 1)[0] ?? "";
-  const delimiter = detectDelimiter(firstLine);
+  const sampleLines = trimmed.split(/\r?\n/, 5).filter(Boolean);
+  const delimiter = sampleLines
+    .map((line) => ({ delimiter: detectDelimiter(line), separators: Math.max(
+      (line.match(/,/g) ?? []).length,
+      (line.match(/;/g) ?? []).length,
+      (line.match(/\t/g) ?? []).length
+    ) }))
+    .sort((left, right) => right.separators - left.separators)[0]?.delimiter ?? ",";
   const rows: string[][] = [];
   let field = "";
   let row: string[] = [];
@@ -596,13 +633,35 @@ function parseCsv(text: string): CsvRow[] {
   row.push(field.trim());
   rows.push(row);
 
-  const headerRow = rows.find((candidate) => candidate.some(Boolean));
+  const firstNonEmptyIndex = rows.findIndex((candidate) => candidate.some(Boolean));
+  if (firstNonEmptyIndex < 0) return [];
+  const firstNonEmptyRow = rows[firstNonEmptyIndex];
+  // Samsung Health exports written by recent app versions start each CSV with
+  // a data-type/version preamble, for example:
+  //   com.samsung.shealth.step_daily_trend,7006003,6.30.2
+  // The actual column names are on the following non-empty row.
+  const headerRow = isSamsungExportPreamble(firstNonEmptyRow)
+    ? rows.slice(firstNonEmptyIndex + 1).find((candidate) => candidate.some(Boolean))
+    : firstNonEmptyRow;
   if (!headerRow) return [];
   const headerIndex = rows.indexOf(headerRow);
   const headers = headerRow.map((value, index) => value || `column_${index + 1}`);
   return rows.slice(headerIndex + 1)
     .filter((values) => values.some(Boolean))
     .map((values) => Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""])));
+}
+
+function isSamsungExportPreamble(row: string[]): boolean {
+  return row.length >= 3
+    && /^com\.samsung\.(?:shealth|health)\./i.test(row[0]?.trim() ?? "")
+    && /^\d+$/.test(row[1]?.trim() ?? "")
+    && /^\d+(?:\.\d+)*$/.test(row[2]?.trim() ?? "");
+}
+
+function isWorkoutSource(sourceName: string): boolean {
+  const fileName = basename(sourceName);
+  if (/^com\.samsung\.(?:shealth|health)\.exercise(?:\.\d+)?\.csv$/i.test(fileName)) return true;
+  return /(?:^|[._-])workouts?(?:[._-]|$)/i.test(fileName);
 }
 
 function detectDelimiter(line: string): "," | ";" | "\t" {
@@ -616,8 +675,18 @@ function detectDelimiter(line: string): "," | ";" | "\t" {
 
 function bestDate(row: CsvRow, aliases: string[]): string | undefined {
   const value = readString(row, aliases);
-  const parsed = parseSamsungDate(value);
+  const parsed = parseSamsungDate(combineDateAndOffset(value, readString(row, ["time_offset"])));
   return parsed?.toISOString();
+}
+
+function combineDateAndOffset(value: string | undefined, offset: string | undefined): string | undefined {
+  if (!value || !offset) return value;
+  const trimmed = value.trim();
+  if (/^\d+(?:\.\d+)?$/.test(trimmed) || /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)) return value;
+  const match = /^UTC([+-])(\d{2}):?(\d{2})?$/i.exec(offset.trim());
+  if (!match) return value;
+  const isoBase = trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T");
+  return `${isoBase}${match[1]}${match[2]}:${match[3] ?? "00"}`;
 }
 
 function readString(row: CsvRow, aliases: string[]): string | undefined {
@@ -633,11 +702,16 @@ function readNumber(row: CsvRow, aliases: string[]): number | undefined {
 
 function findEntry(row: CsvRow, aliases: string[]): [string, string] | undefined {
   const normalizedAliases = aliases.map(normalizeKey);
-  return Object.entries(row).find(([key, value]) => {
-    if (!value?.trim()) return false;
-    const normalized = normalizeKey(key);
-    return normalizedAliases.some((alias) => normalized === alias || normalized.endsWith(`_${alias}`) || normalized.includes(alias));
-  });
+  const entries = Object.entries(row).filter(([, value]) => value?.trim());
+  for (const alias of normalizedAliases) {
+    const exact = entries.find(([key]) => normalizeKey(key) === alias);
+    if (exact) return exact;
+    const suffix = entries
+      .filter(([key]) => normalizeKey(key).endsWith(`_${alias}`))
+      .sort(([left], [right]) => normalizeKey(left).length - normalizeKey(right).length)[0];
+    if (suffix) return suffix;
+  }
+  return undefined;
 }
 
 function parseNumber(value: string | undefined): number | undefined {
@@ -658,7 +732,7 @@ function firstUsefulNumber(row: CsvRow): number | undefined {
 }
 
 function durationMinutes(row: CsvRow, startDate?: string, endDate?: string): number | undefined {
-  const explicit = readNumber(row, ["duration", "duration_ms", "duration_millis", "elapsed_time", "sleep_duration", "time"]);
+  const explicit = readNumber(row, ["duration", "duration_ms", "duration_millis", "elapsed_time", "sleep_duration"]);
   if (explicit !== undefined) {
     if (explicit > 100_000) return round(explicit / 60_000);
     if (explicit > 1_000) return round(explicit / 60);
@@ -714,6 +788,11 @@ function safeTypeFromFile(normalizedFile: string): string {
     .filter(Boolean)
     .slice(0, 4)
     .join("_") || "record";
+}
+
+function samsungDataTypeFromFile(normalizedFile: string): string | undefined {
+  const match = /^com_samsung_(?:shealth|health)_(.+?)(?:_\d{6,})?$/.exec(normalizedFile);
+  return match?.[1];
 }
 
 function normalizeKey(value: string): string {

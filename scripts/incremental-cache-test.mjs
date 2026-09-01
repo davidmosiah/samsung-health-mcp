@@ -48,7 +48,7 @@ try {
       response_format: 'json'
     }
   });
-  assert.equal(first.structuredContent?.count, 3, 'first call should return all 3 step records');
+  assert.equal(first.structuredContent?.count, 4, 'first call should return all 4 aggregate step records');
   assert.equal(existsSync(cachePath), true, 'cache file should be created');
 
   const cache1 = JSON.parse(readFileSync(cachePath, 'utf8'));
@@ -91,7 +91,7 @@ try {
       response_format: 'json'
     }
   });
-  assert.equal(fullRescan.structuredContent?.count, 3, 'non-incremental call should still return all 3 records');
+  assert.equal(fullRescan.structuredContent?.count, 4, 'non-incremental call should still return all 4 records');
 
   // 6. mtime change on any CSV inside the directory invalidates the cache.
   const dirStat = statSync(exportPath);
@@ -108,7 +108,7 @@ try {
       response_format: 'json'
     }
   });
-  assert.equal(afterMtimeChange.structuredContent?.count, 3, 'mtime change should invalidate cache and re-parse');
+  assert.equal(afterMtimeChange.structuredContent?.count, 4, 'mtime change should invalidate cache and re-parse');
 
   // 7. Clear-cache tool wipes the cache state.
   const clear = await client.callTool({
@@ -128,7 +128,7 @@ try {
       response_format: 'json'
     }
   });
-  assert.equal(afterClear.structuredContent?.count, 3, 'after clear, should re-parse from beginning');
+  assert.equal(afterClear.structuredContent?.count, 4, 'after clear, should re-parse from beginning');
 
   // 8. Unknown category does not appear in cache stats.
   const unknownCategoryStats = await client.callTool({
