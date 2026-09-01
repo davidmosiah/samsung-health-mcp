@@ -57,6 +57,8 @@ try {
   });
   assert.equal(inventory.structuredContent?.totals?.workouts, 1);
   assert.equal(inventory.structuredContent?.record_types?.samsung_health_steps?.count, 4);
+  assert.equal(inventory.structuredContent?.record_types?.samsung_health_exercise_location, undefined);
+  assert.equal(inventory.structuredContent?.record_types?.samsung_health_exercise_route, undefined);
 
   const daily = await client.callTool({
     name: 'samsung_health_daily_summary',
@@ -81,6 +83,17 @@ try {
   assert.equal(numericSleepStages.structuredContent?.sleep?.stages_minutes?.deep, 60);
   assert.equal(numericSleepStages.structuredContent?.sleep?.stages_minutes?.rem, 30);
 
+  const overlappingSleepSources = await client.callTool({
+    name: 'samsung_health_daily_summary',
+    arguments: { date: '2026-05-05', timezone: 'America/Fortaleza', response_format: 'json' }
+  });
+  assert.equal(overlappingSleepSources.structuredContent?.sleep?.minutes_in_bed, 480);
+  assert.equal(overlappingSleepSources.structuredContent?.sleep?.minutes_asleep, 420);
+  assert.equal(overlappingSleepSources.structuredContent?.sleep?.awake_minutes, 60);
+  assert.equal(overlappingSleepSources.structuredContent?.sleep?.stages_minutes?.light, 300);
+  assert.equal(overlappingSleepSources.structuredContent?.sleep?.stages_minutes?.deep, 60);
+  assert.equal(overlappingSleepSources.structuredContent?.sleep?.stages_minutes?.rem, 60);
+
   const integratedSteps = await client.callTool({
     name: 'samsung_health_daily_summary',
     arguments: { date: '2026-05-04', timezone: 'America/Fortaleza', response_format: 'json' }
@@ -94,6 +107,8 @@ try {
   assert.equal(weekly.structuredContent?.days, 2);
   assert.equal(weekly.structuredContent?.totals?.steps, 5000);
   assert.equal(weekly.structuredContent?.daily?.length, 2);
+  assert.equal(weekly.structuredContent?.daily?.[0]?.workouts?.count, 1);
+  assert.equal(weekly.structuredContent?.daily?.[1]?.workouts?.count, 0);
 
   const context = await client.callTool({
     name: 'samsung_health_wellness_context',

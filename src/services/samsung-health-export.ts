@@ -384,6 +384,10 @@ function inferRecordType(normalizedFile: string, row: CsvRow): string | undefine
   const rowKeys = Object.keys(row).map(normalizeKey).join(" ");
   const samsungType = samsungDataTypeFromFile(normalizedFile);
   if (samsungType) {
+    // Exercise sidecars (route, location, weather, recovery heart rate, and
+    // similar tables) describe a workout but are not standalone health
+    // records. The main exercise CSV is handled by rowToWorkout above.
+    if (samsungType.startsWith("exercise_")) return undefined;
     if (samsungType === "step_daily_trend") {
       const sourceType = readNumber(row, ["source_type"]);
       return sourceType === undefined || sourceType === -2

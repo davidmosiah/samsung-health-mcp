@@ -19,11 +19,17 @@ interface DayWindow {
   end: Date;
 }
 
+const SLEEP_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
 export async function buildDailySummary(exportPath: string | undefined, date?: string, options: SummaryOptions = {}) {
   const timezone = options.timezone ?? "UTC";
   const targetDate = date ?? todayIsoDate(timezone);
   const window = buildDayWindow(targetDate, timezone);
-  const snapshot = await getExportSnapshot({ exportPath, start: window.start.toISOString(), end: window.end.toISOString() });
+  const snapshot = await getExportSnapshot({
+    exportPath,
+    start: new Date(window.start.getTime() - SLEEP_LOOKBACK_MS).toISOString(),
+    end: window.end.toISOString()
+  });
   return summarizeDay(snapshot.records, snapshot.workouts, window, {
     generatedAt: snapshot.generated_at,
     source: snapshot.source,
@@ -55,7 +61,7 @@ export async function buildWeeklySummary(exportPath: string | undefined, endDate
   const normalizedDays = Math.min(Math.max(Math.trunc(days), 1), 30);
   const targetEndDate = endDate ?? todayIsoDate(timezone);
   const startDate = addCalendarDays(targetEndDate, -(normalizedDays - 1));
-  const rangeStart = dayBounds(startDate, timezone).start;
+  const rangeStart = new Date(dayBounds(startDate, timezone).start.getTime() - SLEEP_LOOKBACK_MS);
   const rangeEnd = dayBounds(targetEndDate, timezone).end;
   const snapshot = await getExportSnapshot({ exportPath, start: rangeStart.toISOString(), end: rangeEnd.toISOString() });
   const daily = [];
@@ -64,8 +70,8 @@ export async function buildWeeklySummary(exportPath: string | undefined, endDate
     const date = addCalendarDays(startDate, offset);
     const window = buildDayWindow(date, timezone);
     daily.push(summarizeDay(
-      snapshot.records.filter((record) => recordOverlaps(record.startDate, record.endDate, window.start, window.end)),
-      snapshot.workouts.filter((workout) => recordOverlaps(workout.startDate, workout.endDate, window.start, window.end)),
+      snapshot.records,
+      snapshot.workouts,
       window,
       {
         generatedAt: snapshot.generated_at,
@@ -150,19 +156,21 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
   privacyMode?: PrivacyMode;
 }) {
   const privacyMode = options.privacyMode ?? "summary";
-  const workoutView = workoutPrivacyView(workouts, privacyMode, options.timezone);
-  const steps = sumType(records, "samsung_health_steps");
-  const activeEnergy = sumType(records, "samsung_health_active_energy");
-  const distance = sumType(records, "samsung_health_distance");
-  const resting = averageType(records, "samsung_health_resting_heart_rate");
-  const hrv = averageType(records, "samsung_health_hrv");
-  const heartRateValues = numericValues(records, "samsung_health_heart_rate");
-  const respiratoryRate = averageType(records, "samsung_health_respiratory_rate");
-  const oxygenSaturation = averageType(records, "samsung_health_oxygen_saturation");
-  const sleep = sleepBreakdown(records);
-  const bodyMass = latestType(records, "samsung_health_body_weight");
+  const dayRecords = records.filter((record) => recordOverlaps(record.startDate, record.endDate, window.start, window.end));
+  const dayWorkouts = workouts.filter((workout) => recordOverlaps(workout.startDate, workout.endDate, window.start, window.end));
+  const workoutView = workoutPrivacyView(dayWorkouts, privacyMode, options.timezone);
+  const steps = sumType(dayRecords, "samsung_health_steps");
+  const activeEnergy = sumType(dayRecords, "samsung_health_active_energy");
+  const distance = sumType(dayRecords, "samsung_health_distance");
+  const resting = averageType(dayRecords, "samsung_health_resting_heart_rate");
+  const hrv = averageType(dayRecords, "samsung_health_hrv");
+  const heartRateValues = numericValues(dayRecords, "samsung_health_heart_rate");
+  const respiratoryRate = averageType(dayRecords, "samsung_health_respiratory_rate");
+  const oxygenSaturation = averageType(dayRecords, "samsung_health_oxygen_saturation");
+  const sleep = sleepBreakdown(records, window);
+  const bodyMass = latestType(dayRecords, "samsung_health_body_weight");
   const mindfulMinutes = 0;
-  const workoutDuration = round(workouts.reduce((sum, workout) => sum + workoutDurationMinutes(workout), 0)) ?? 0;
+  const workoutDuration = round(dayWorkouts.reduce((sum, workout) => sum + workoutDurationMinutes(workout), 0)) ?? 0;
 
   return {
     kind: "daily_summary",
@@ -173,8 +181,8 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
     export_modified_at: options.exportModifiedAt,
     cache: {
       hit: options.cacheHit,
-      records_indexed: records.length,
-      workouts_indexed: workouts.length
+      records_indexed: dayRecords.length,
+      workouts_indexed: dayWorkouts.length
     },
     totals: {
       steps,
@@ -200,19 +208,19 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
       minutes: round(mindfulMinutes) ?? 0
     },
     workouts: {
-      count: workouts.length,
+      count: dayWorkouts.length,
       total_duration_minutes: workoutDuration,
-      activity_counts: countBy(workouts, (workout) => workout.workoutActivityType || "unknown"),
+      activity_counts: countBy(dayWorkouts, (workout) => workout.workoutActivityType || "unknown"),
       privacy_mode: privacyMode,
       records: workoutView.workouts,
       disclosure: workoutView.disclosure
     },
     data_quality: {
-      record_count: records.length,
-      workout_count: workouts.length,
+      record_count: dayRecords.length,
+      workout_count: dayWorkouts.length,
       has_sleep: sleep.minutes_asleep > 0,
       has_heart: heartRateValues.length > 0 || resting !== undefined || hrv !== undefined,
-      has_activity: steps > 0 || workouts.length > 0
+      has_activity: steps > 0 || dayWorkouts.length > 0
     },
     notes: [
       "Summary is derived from a Samsung Health export file, not live Samsung Health.",
@@ -252,24 +260,55 @@ function buildWeeklyTrends(daily: Array<ReturnType<typeof summarizeDay>>) {
   };
 }
 
-function sleepBreakdown(records: SamsungHealthRecord[]) {
-  const stageRecords = records.filter((record) => record.type === "samsung_health_sleep" || record.type === "samsung_health_sleep_stage");
+function sleepBreakdown(records: SamsungHealthRecord[], window: DayWindow) {
+  const sessions = records.filter((record) => record.type === "samsung_health_sleep" && recordEndsInWindow(record, window));
+  const allSessions = records.filter((record) => record.type === "samsung_health_sleep");
+  const allStages = records.filter((record) => record.type === "samsung_health_sleep_stage");
+  const selectedStages = allStages.filter((stage) => {
+    const relatedToTargetSession = sessions.some((session) => recordsOverlap(stage, session));
+    if (relatedToTargetSession) return true;
+    const relatedToAnySession = allSessions.some((session) => recordsOverlap(stage, session));
+    return !relatedToAnySession && recordOverlaps(stage.startDate, stage.endDate, window.start, window.end);
+  });
+  const inBedIntervals = sessions.map(recordInterval).filter(isInterval);
+  const asleepIntervals: TimeInterval[] = [];
+  const awakeIntervals: TimeInterval[] = [];
+  const stageIntervals: Record<string, TimeInterval[]> = {};
   const stages: Record<string, number> = {};
-  let minutesAsleep = 0;
-  let minutesInBed = 0;
-  let minutesAwake = 0;
 
-  for (const record of stageRecords) {
-    const minutes = recordDurationMinutes(record);
+  for (const record of selectedStages) {
+    const interval = recordInterval(record);
+    if (!interval) continue;
+    const relatedToTargetSession = sessions.some((session) => recordsOverlap(record, session));
     const stage = sleepStageName(record.value);
     const namedStage = /^(asleep|sleep|light|deep|rem|awake|wake|in_?bed)$/.test(stage);
-    if (record.type === "samsung_health_sleep_stage" || namedStage) {
-      stages[stage] = round((stages[stage] ?? 0) + minutes) ?? 0;
-    }
-    if (/^(asleep|sleep|light|deep|rem)$/.test(stage)) minutesAsleep += minutes;
-    if (record.type === "samsung_health_sleep" || /^in_?bed$/.test(stage)) minutesInBed += minutes;
-    if (/^(awake|wake)$/.test(stage)) minutesAwake += minutes;
+    if (namedStage) (stageIntervals[stage] ??= []).push(interval);
+    if (/^(asleep|sleep|light|deep|rem)$/.test(stage)) asleepIntervals.push(interval);
+    if (/^(awake|wake)$/.test(stage)) awakeIntervals.push(interval);
+    if (/^in_?bed$/.test(stage) || !relatedToTargetSession) inBedIntervals.push(interval);
   }
+
+  for (const session of sessions) {
+    if (selectedStages.some((stage) => recordsOverlap(stage, session))) continue;
+    const interval = recordInterval(session);
+    if (!interval) continue;
+    const stage = sleepStageName(session.value);
+    if (/^(asleep|sleep|light|deep|rem)$/.test(stage)) {
+      asleepIntervals.push(interval);
+      (stageIntervals[stage] ??= []).push(interval);
+    } else if (/^(awake|wake)$/.test(stage)) {
+      awakeIntervals.push(interval);
+      (stageIntervals[stage] ??= []).push(interval);
+    }
+  }
+
+  for (const [stage, intervals] of Object.entries(stageIntervals)) {
+    stages[stage] = round(unionMinutes(intervals)) ?? 0;
+  }
+
+  const minutesAsleep = unionMinutes(asleepIntervals);
+  const minutesInBed = unionMinutes(inBedIntervals);
+  const minutesAwake = unionMinutes(awakeIntervals);
 
   return {
     minutes_asleep: round(minutesAsleep) ?? 0,
@@ -278,6 +317,51 @@ function sleepBreakdown(records: SamsungHealthRecord[]) {
     awake_minutes: round(minutesAwake) ?? 0,
     stages_minutes: stages
   };
+}
+
+interface TimeInterval {
+  start: number;
+  end: number;
+}
+
+function recordEndsInWindow(record: SamsungHealthRecord, window: DayWindow): boolean {
+  const end = parseSamsungDate(record.endDate ?? record.startDate);
+  return Boolean(end && end >= window.start && end <= window.end);
+}
+
+function recordsOverlap(left: SamsungHealthRecord, right: SamsungHealthRecord): boolean {
+  const leftInterval = recordInterval(left);
+  const rightInterval = recordInterval(right);
+  return Boolean(leftInterval && rightInterval && leftInterval.start < rightInterval.end && rightInterval.start < leftInterval.end);
+}
+
+function recordInterval(record: SamsungHealthRecord): TimeInterval | undefined {
+  const start = parseSamsungDate(record.startDate)?.getTime();
+  const end = parseSamsungDate(record.endDate)?.getTime();
+  if (start === undefined || end === undefined || end <= start) return undefined;
+  return { start, end };
+}
+
+function isInterval(value: TimeInterval | undefined): value is TimeInterval {
+  return value !== undefined;
+}
+
+function unionMinutes(intervals: TimeInterval[]): number {
+  const sorted = intervals.slice().sort((left, right) => left.start - right.start || left.end - right.end);
+  let totalMs = 0;
+  let current: TimeInterval | undefined;
+  for (const interval of sorted) {
+    if (!current) {
+      current = { ...interval };
+    } else if (interval.start <= current.end) {
+      current.end = Math.max(current.end, interval.end);
+    } else {
+      totalMs += current.end - current.start;
+      current = { ...interval };
+    }
+  }
+  if (current) totalMs += current.end - current.start;
+  return totalMs / 60_000;
 }
 
 function sleepStageName(value: string | undefined): string {

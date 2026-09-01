@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync, statSync, utimesSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, existsSync, statSync, utimesSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -52,6 +52,7 @@ try {
   assert.equal(existsSync(cachePath), true, 'cache file should be created');
 
   const cache1 = JSON.parse(readFileSync(cachePath, 'utf8'));
+  assert.equal(cache1.schema_version, 2, 'cache should persist the current parser schema version');
   assert.ok(cache1.categories?.samsung_health_steps, 'should persist last_parsed_at for the step category');
   assert.equal(typeof cache1.export_mtime_ms, 'number');
   assert.equal(typeof cache1.export_path, 'string');
@@ -69,7 +70,24 @@ try {
   });
   assert.equal(second.structuredContent?.count, 0, 'second call should skip all already-seen records');
 
-  // 4. Connection status now shows the cache populated.
+  // 4. A cache from an older parser schema is invalidated even when the
+  // export path and mtime have not changed.
+  writeFileSync(cachePath, `${JSON.stringify({ ...cache1, schema_version: 1 }, null, 2)}\n`);
+  const afterSchemaChange = await client.callTool({
+    name: 'samsung_health_list_records',
+    arguments: {
+      type: 'samsung_health_steps',
+      limit: 50,
+      incremental_cache: true,
+      privacy_mode: 'raw',
+      response_format: 'json'
+    }
+  });
+  assert.equal(afterSchemaChange.structuredContent?.count, 4, 'parser schema change should invalidate cache and re-parse');
+  const cacheAfterSchemaChange = JSON.parse(readFileSync(cachePath, 'utf8'));
+  assert.equal(cacheAfterSchemaChange.schema_version, 2, 'cache should be rewritten with the current schema version');
+
+  // 5. Connection status now shows the cache populated.
   const statusWithCache = await client.callTool({
     name: 'samsung_health_connection_status',
     arguments: { response_format: 'json' }
@@ -81,7 +99,7 @@ try {
   assert.ok(stepEntry, 'connection status should list the step category');
   assert.ok(stepEntry.last_parsed_at, 'step category should have a last_parsed_at');
 
-  // 5. Without incremental_cache=true, behavior unchanged (returns full set).
+  // 6. Without incremental_cache=true, behavior unchanged (returns full set).
   const fullRescan = await client.callTool({
     name: 'samsung_health_list_records',
     arguments: {
@@ -93,7 +111,7 @@ try {
   });
   assert.equal(fullRescan.structuredContent?.count, 4, 'non-incremental call should still return all 4 records');
 
-  // 6. mtime change on any CSV inside the directory invalidates the cache.
+  // 7. mtime change on any CSV inside the directory invalidates the cache.
   const dirStat = statSync(exportPath);
   const futureTime = new Date(dirStat.mtimeMs + 5000);
   utimesSync(exportPath, futureTime, futureTime);
@@ -110,7 +128,7 @@ try {
   });
   assert.equal(afterMtimeChange.structuredContent?.count, 4, 'mtime change should invalidate cache and re-parse');
 
-  // 7. Clear-cache tool wipes the cache state.
+  // 8. Clear-cache tool wipes the cache state.
   const clear = await client.callTool({
     name: 'samsung_health_clear_incremental_cache',
     arguments: { response_format: 'json' }
@@ -130,7 +148,7 @@ try {
   });
   assert.equal(afterClear.structuredContent?.count, 4, 'after clear, should re-parse from beginning');
 
-  // 8. Unknown category does not appear in cache stats.
+  // 9. Unknown category does not appear in cache stats.
   const unknownCategoryStats = await client.callTool({
     name: 'samsung_health_connection_status',
     arguments: { response_format: 'json' }
@@ -139,7 +157,7 @@ try {
     ?.find((c) => c.category === 'samsung_health_NONE');
   assert.equal(unknownEntry, undefined);
 
-  console.log(JSON.stringify({ ok: true, incremental_cache: true, scenarios: 8 }, null, 2));
+  console.log(JSON.stringify({ ok: true, incremental_cache: true, scenarios: 9 }, null, 2));
 } finally {
   await client.close();
 }
