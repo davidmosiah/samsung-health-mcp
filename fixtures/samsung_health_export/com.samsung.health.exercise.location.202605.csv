@@ -1,0 +1,3 @@
+com.samsung.health.exercise.location,7006003,1
+start_time,end_time,latitude,longitude,speed
+2026-05-01T18:10:00-03:00,2026-05-01T18:10:01-03:00,-11.111111,-22.222222,7.5

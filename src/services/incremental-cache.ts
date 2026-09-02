@@ -15,6 +15,8 @@ import { dirname, join } from "node:path";
  * mtime changes, which signals a fresh export from the Samsung Health app.
  */
 export interface IncrementalCacheData {
+  /** Parser/cache schema version used to invalidate results after upgrades. */
+  schema_version?: number;
   /** Export path tracked by this cache. */
   export_path?: string;
   /** Export file/dir mtime (ms since epoch) at the time of last write. */
@@ -25,7 +27,11 @@ export interface IncrementalCacheData {
   categories: Record<string, string>;
 }
 
-const DEFAULT_CACHE: IncrementalCacheData = { categories: {} };
+const INCREMENTAL_CACHE_SCHEMA_VERSION = 2;
+const DEFAULT_CACHE: IncrementalCacheData = {
+  schema_version: INCREMENTAL_CACHE_SCHEMA_VERSION,
+  categories: {}
+};
 
 export function incrementalCachePath(homeDir = homedir()): string {
   return join(homeDir, ".samsung-health-mcp", "incremental-cache.json");
@@ -37,6 +43,7 @@ export async function loadCache(homeDir = homedir()): Promise<IncrementalCacheDa
     const raw = await fs.readFile(path, "utf8");
     const parsed = JSON.parse(raw) as Partial<IncrementalCacheData>;
     return {
+      schema_version: parsed.schema_version,
       export_path: parsed.export_path,
       export_mtime_ms: parsed.export_mtime_ms,
       updated_at: parsed.updated_at,
@@ -55,6 +62,7 @@ export function loadCacheSync(homeDir = homedir()): IncrementalCacheData {
     const raw = readFileSync(path, "utf8");
     const parsed = JSON.parse(raw) as Partial<IncrementalCacheData>;
     return {
+      schema_version: parsed.schema_version,
       export_path: parsed.export_path,
       export_mtime_ms: parsed.export_mtime_ms,
       updated_at: parsed.updated_at,
@@ -68,6 +76,7 @@ export function loadCacheSync(homeDir = homedir()): IncrementalCacheData {
 export async function saveCache(data: IncrementalCacheData, homeDir = homedir()): Promise<string> {
   const path = incrementalCachePath(homeDir);
   const payload: IncrementalCacheData = {
+    schema_version: INCREMENTAL_CACHE_SCHEMA_VERSION,
     export_path: data.export_path,
     export_mtime_ms: data.export_mtime_ms,
     updated_at: new Date().toISOString(),
@@ -111,10 +120,12 @@ export async function invalidateIfExportChanged(
   const cache = await loadCache(homeDir);
   if (!exportPath || exportMtimeMs === undefined) return { invalidated: false, cache };
 
+  const schemaMismatch = cache.schema_version !== INCREMENTAL_CACHE_SCHEMA_VERSION;
   const pathMismatch = cache.export_path !== undefined && cache.export_path !== exportPath;
   const mtimeMismatch = cache.export_mtime_ms !== undefined && cache.export_mtime_ms !== exportMtimeMs;
-  if (pathMismatch || mtimeMismatch) {
+  if (schemaMismatch || pathMismatch || mtimeMismatch) {
     const fresh: IncrementalCacheData = {
+      schema_version: INCREMENTAL_CACHE_SCHEMA_VERSION,
       export_path: exportPath,
       export_mtime_ms: exportMtimeMs,
       categories: {}
@@ -125,6 +136,7 @@ export async function invalidateIfExportChanged(
 
   if (cache.export_path === undefined || cache.export_mtime_ms === undefined) {
     const seeded: IncrementalCacheData = {
+      schema_version: INCREMENTAL_CACHE_SCHEMA_VERSION,
       export_path: exportPath,
       export_mtime_ms: exportMtimeMs,
       categories: cache.categories
