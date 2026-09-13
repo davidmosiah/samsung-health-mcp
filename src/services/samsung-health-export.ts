@@ -200,7 +200,7 @@ export async function listRecords(query: RecordQuery): Promise<SamsungHealthReco
       records.push(record);
       return records.length >= limit;
     }
-  });
+  }, { start, end });
 
   if (useIncremental && query.type && newestSeenMs > 0 && cachePath) {
     const cache = await loadCache();
@@ -227,7 +227,7 @@ export async function listWorkouts(query: WorkoutQuery): Promise<SamsungHealthWo
       workouts.push(workout);
       return workouts.length >= limit;
     }
-  });
+  }, { start, end });
 
   return workouts;
 }
@@ -254,7 +254,7 @@ export async function getExportSnapshot(query: SnapshotQuery): Promise<SamsungHe
       workouts.push(workout);
       return false;
     }
-  });
+  }, { start, end });
 
   const snapshot: SamsungHealthSnapshot = {
     source: "samsung_health_export",
@@ -308,14 +308,38 @@ export function recordOverlaps(startValue: string | undefined, endValue: string 
   return overlaps(startValue, endValue, start, end);
 }
 
-async function parseExportEntities(location: ExportLocation, visitor: EntityVisitor): Promise<void> {
+/**
+ * How far outside the requested range a row is still allowed to be by the
+ * cheap pre-filter. The pre-filter reads raw column text and ignores the
+ * per-row `time_offset`, so it must never be the thing that decides a row is
+ * out of range — it only skips rows that cannot be relevant under any
+ * timezone. `overlaps` still makes the real decision on what survives.
+ */
+const RANGE_PREFILTER_SLACK_MS = 48 * 60 * 60 * 1000;
+
+async function parseExportEntities(
+  location: ExportLocation,
+  visitor: EntityVisitor,
+  range?: { start?: Date; end?: Date }
+): Promise<void> {
   const sources = await readCsvSources(location);
+  const slackStart = range?.start ? range.start.getTime() - RANGE_PREFILTER_SLACK_MS : undefined;
+  const slackEnd = range?.end ? range.end.getTime() + RANGE_PREFILTER_SLACK_MS : undefined;
+  const prefiltering = slackStart !== undefined || slackEnd !== undefined;
   let stopped = false;
   for (const source of sources) {
     if (stopped) break;
-    const rows = parseCsv(source.text);
-    for (const row of rows) {
+    const table = parseCsvTable(source.text);
+    if (!table.headers.length) continue;
+    // Resolve the date columns once per file rather than once per row:
+    // findEntry walks every column of every row, which is most of the parse
+    // cost on a minute-level table like sleep_stage or heart_rate.
+    const startIndex = prefiltering ? dateColumnIndex(table.headers, DATE_KEYS.start) : -1;
+    const endIndex = prefiltering ? dateColumnIndex(table.headers, DATE_KEYS.end) : -1;
+    for (const values of table.rows) {
       if (stopped) break;
+      if (prefiltering && startIndex >= 0 && !rowNearRange(values, startIndex, endIndex, slackStart, slackEnd)) continue;
+      const row = toCsvRow(table.headers, values);
       const workout = rowToWorkout(source.name, row);
       if (workout) {
         stopped = visitor.onWorkout?.(workout) ?? false;
@@ -325,6 +349,42 @@ async function parseExportEntities(location: ExportLocation, visitor: EntityVisi
       if (record) stopped = visitor.onRecord?.(record) ?? false;
     }
   }
+}
+
+/** Index of the first header matching one of `aliases`, or -1. */
+function dateColumnIndex(headers: string[], aliases: string[]): number {
+  const normalizedAliases = aliases.map(normalizeKey);
+  const normalizedHeaders = headers.map(normalizeKey);
+  for (const alias of normalizedAliases) {
+    const exact = normalizedHeaders.indexOf(alias);
+    if (exact >= 0) return exact;
+    const suffix = normalizedHeaders.findIndex((header) => header.endsWith(`_${alias}`));
+    if (suffix >= 0) return suffix;
+  }
+  return -1;
+}
+
+/**
+ * Cheap "could this row possibly be in range?" test on raw column text.
+ * Returns true whenever it cannot tell, so a missing or unparseable date
+ * always falls through to the full row handling.
+ */
+function rowNearRange(
+  values: string[],
+  startIndex: number,
+  endIndex: number,
+  slackStart?: number,
+  slackEnd?: number
+): boolean {
+  const startText = values[startIndex];
+  if (!startText) return true;
+  const rowStart = parseSamsungDate(startText);
+  if (!rowStart) return true;
+  const endText = endIndex >= 0 ? values[endIndex] : undefined;
+  const rowEnd = (endText ? parseSamsungDate(endText) : undefined) ?? rowStart;
+  if (slackEnd !== undefined && rowStart.getTime() > slackEnd) return false;
+  if (slackStart !== undefined && rowEnd.getTime() < slackStart) return false;
+  return true;
 }
 
 function rowToRecord(sourceName: string, row: CsvRow): SamsungHealthRecord | undefined {
@@ -612,6 +672,27 @@ function countZipCsvEntries(zipPath: string): Promise<number> {
 }
 
 function parseCsv(text: string): CsvRow[] {
+  const table = parseCsvTable(text);
+  return table.rows.map((values) => toCsvRow(table.headers, values));
+}
+
+/**
+ * Builds a row object from a header list and one raw value row. Split out of
+ * `parseCsvTable` so a caller that only needs a couple of columns to decide
+ * whether a row is in range can skip materializing the whole object.
+ */
+function toCsvRow(headers: string[], values: string[]): CsvRow {
+  const row: CsvRow = {};
+  for (let index = 0; index < headers.length; index += 1) row[headers[index]] = values[index] ?? "";
+  return row;
+}
+
+interface CsvTable {
+  headers: string[];
+  rows: string[][];
+}
+
+function parseCsvTable(text: string): CsvTable {
   const trimmed = text.replace(/^\uFEFF/, "");
   const sampleLines = trimmed.split(/\r?\n/, 5).filter(Boolean);
   const delimiter = sampleLines
@@ -658,7 +739,7 @@ function parseCsv(text: string): CsvRow[] {
   rows.push(row);
 
   const firstNonEmptyIndex = rows.findIndex((candidate) => candidate.some(Boolean));
-  if (firstNonEmptyIndex < 0) return [];
+  if (firstNonEmptyIndex < 0) return { headers: [], rows: [] };
   const firstNonEmptyRow = rows[firstNonEmptyIndex];
   // Samsung Health exports written by recent app versions start each CSV with
   // a data-type/version preamble, for example:
@@ -667,12 +748,10 @@ function parseCsv(text: string): CsvRow[] {
   const headerRow = isSamsungExportPreamble(firstNonEmptyRow)
     ? rows.slice(firstNonEmptyIndex + 1).find((candidate) => candidate.some(Boolean))
     : firstNonEmptyRow;
-  if (!headerRow) return [];
+  if (!headerRow) return { headers: [], rows: [] };
   const headerIndex = rows.indexOf(headerRow);
   const headers = headerRow.map((value, index) => value || `column_${index + 1}`);
-  return rows.slice(headerIndex + 1)
-    .filter((values) => values.some(Boolean))
-    .map((values) => Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""])));
+  return { headers, rows: rows.slice(headerIndex + 1).filter((values) => values.some(Boolean)) };
 }
 
 function isSamsungExportPreamble(row: string[]): boolean {
