@@ -416,19 +416,39 @@ function inferRecordType(normalizedFile: string, row: CsvRow): string | undefine
   // makes daily summaries count the same activity multiple times.
   if (normalizedFile.includes("step_daily_trend")) return "samsung_health_steps";
   if (normalizedFile.includes("pedometer_")) return `samsung_health_${safeTypeFromFile(normalizedFile)}`;
-  if (haystack.includes("step")) return "samsung_health_steps";
+  // The file name names the data type; column names only describe fields that
+  // table happens to carry. Matching both in one pass lets a sibling column
+  // outvote the file itself: com.samsung.shealth.tracker.oxygen_saturation
+  // carries a heart_rate column and was classified as heart rate. Try the file
+  // name alone first, and fall back to column names only when it says nothing.
+  const byFileName = matchRecordType(normalizedFile);
+  if (byFileName) return byFileName;
+  const byColumns = matchRecordType(haystack);
+  if (byColumns) return byColumns;
+  if (Object.keys(row).length > 0 && normalizedFile.includes("samsung")) return `samsung_health_${safeTypeFromFile(normalizedFile)}`;
+  return undefined;
+}
+
+/**
+ * Ordered keyword match, shared by the file-name pass and the column-name
+ * fallback of `inferRecordType`. Order matters: the more specific keyword of
+ * an overlapping pair goes first, so `sleep_stage` is not swallowed by
+ * `sleep`, `hrv` not by `heart_rate`, and `oxygen_saturation` not by the
+ * `heart_rate` column that ships alongside it.
+ */
+function matchRecordType(haystack: string): string | undefined {
   if (haystack.includes("sleep_stage")) return "samsung_health_sleep_stage";
   if (haystack.includes("sleep")) return "samsung_health_sleep";
+  if (haystack.includes("step")) return "samsung_health_steps";
   if (haystack.includes("resting_heart")) return "samsung_health_resting_heart_rate";
   if (haystack.includes("hrv") || haystack.includes("heart_rate_variability")) return "samsung_health_hrv";
-  if (haystack.includes("heart_rate") || haystack.includes("heartrate")) return "samsung_health_heart_rate";
   if (haystack.includes("oxygen") || haystack.includes("spo2") || haystack.includes("saturation")) return "samsung_health_oxygen_saturation";
+  if (haystack.includes("heart_rate") || haystack.includes("heartrate")) return "samsung_health_heart_rate";
   if (haystack.includes("respiratory")) return "samsung_health_respiratory_rate";
   if (haystack.includes("weight") || haystack.includes("body_weight")) return "samsung_health_body_weight";
   if (haystack.includes("body_fat")) return "samsung_health_body_fat";
   if (haystack.includes("distance")) return "samsung_health_distance";
   if (haystack.includes("calorie") || haystack.includes("energy")) return "samsung_health_active_energy";
-  if (Object.keys(row).length > 0 && normalizedFile.includes("samsung")) return `samsung_health_${safeTypeFromFile(normalizedFile)}`;
   return undefined;
 }
 
