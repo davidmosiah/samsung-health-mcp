@@ -351,15 +351,23 @@ async function parseExportEntities(
   }
 }
 
-/** Index of the first header matching one of `aliases`, or -1. */
+/**
+ * Index of the header `findEntry`/`bestDate` would pick for `aliases`.
+ * Exact alias wins; among suffix matches the shortest key wins, matching
+ * `findEntry`. Picking a different column than `bestDate` can drop an
+ * in-range row when a long prefixed date is years away from a short one.
+ */
 function dateColumnIndex(headers: string[], aliases: string[]): number {
   const normalizedAliases = aliases.map(normalizeKey);
   const normalizedHeaders = headers.map(normalizeKey);
   for (const alias of normalizedAliases) {
     const exact = normalizedHeaders.indexOf(alias);
     if (exact >= 0) return exact;
-    const suffix = normalizedHeaders.findIndex((header) => header.endsWith(`_${alias}`));
-    if (suffix >= 0) return suffix;
+    const suffix = normalizedHeaders
+      .map((header, index) => ({ header, index }))
+      .filter(({ header }) => header.endsWith(`_${alias}`))
+      .sort((left, right) => left.header.length - right.header.length)[0];
+    if (suffix) return suffix.index;
   }
   return -1;
 }
