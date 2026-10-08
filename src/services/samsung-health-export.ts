@@ -200,7 +200,7 @@ export async function listRecords(query: RecordQuery): Promise<SamsungHealthReco
       records.push(record);
       return records.length >= limit;
     }
-  });
+  }, { start, end });
 
   if (useIncremental && query.type && newestSeenMs > 0 && cachePath) {
     const cache = await loadCache();
@@ -227,7 +227,7 @@ export async function listWorkouts(query: WorkoutQuery): Promise<SamsungHealthWo
       workouts.push(workout);
       return workouts.length >= limit;
     }
-  });
+  }, { start, end });
 
   return workouts;
 }
@@ -254,7 +254,7 @@ export async function getExportSnapshot(query: SnapshotQuery): Promise<SamsungHe
       workouts.push(workout);
       return false;
     }
-  });
+  }, { start, end });
 
   const snapshot: SamsungHealthSnapshot = {
     source: "samsung_health_export",
@@ -308,14 +308,38 @@ export function recordOverlaps(startValue: string | undefined, endValue: string 
   return overlaps(startValue, endValue, start, end);
 }
 
-async function parseExportEntities(location: ExportLocation, visitor: EntityVisitor): Promise<void> {
+/**
+ * How far outside the requested range a row is still allowed to be by the
+ * cheap pre-filter. The pre-filter reads raw column text and ignores the
+ * per-row `time_offset`, so it must never be the thing that decides a row is
+ * out of range — it only skips rows that cannot be relevant under any
+ * timezone. `overlaps` still makes the real decision on what survives.
+ */
+const RANGE_PREFILTER_SLACK_MS = 48 * 60 * 60 * 1000;
+
+async function parseExportEntities(
+  location: ExportLocation,
+  visitor: EntityVisitor,
+  range?: { start?: Date; end?: Date }
+): Promise<void> {
   const sources = await readCsvSources(location);
+  const slackStart = range?.start ? range.start.getTime() - RANGE_PREFILTER_SLACK_MS : undefined;
+  const slackEnd = range?.end ? range.end.getTime() + RANGE_PREFILTER_SLACK_MS : undefined;
+  const prefiltering = slackStart !== undefined || slackEnd !== undefined;
   let stopped = false;
   for (const source of sources) {
     if (stopped) break;
-    const rows = parseCsv(source.text);
-    for (const row of rows) {
+    const table = parseCsvTable(source.text);
+    if (!table.headers.length) continue;
+    // Resolve the date columns once per file rather than once per row:
+    // findEntry walks every column of every row, which is most of the parse
+    // cost on a minute-level table like sleep_stage or heart_rate.
+    const startIndex = prefiltering ? dateColumnIndex(table.headers, DATE_KEYS.start) : -1;
+    const endIndex = prefiltering ? dateColumnIndex(table.headers, DATE_KEYS.end) : -1;
+    for (const values of table.rows) {
       if (stopped) break;
+      if (prefiltering && startIndex >= 0 && !rowNearRange(values, startIndex, endIndex, slackStart, slackEnd)) continue;
+      const row = toCsvRow(table.headers, values);
       const workout = rowToWorkout(source.name, row);
       if (workout) {
         stopped = visitor.onWorkout?.(workout) ?? false;
@@ -325,6 +349,50 @@ async function parseExportEntities(location: ExportLocation, visitor: EntityVisi
       if (record) stopped = visitor.onRecord?.(record) ?? false;
     }
   }
+}
+
+/**
+ * Index of the header `findEntry`/`bestDate` would pick for `aliases`.
+ * Exact alias wins; among suffix matches the shortest key wins, matching
+ * `findEntry`. Picking a different column than `bestDate` can drop an
+ * in-range row when a long prefixed date is years away from a short one.
+ */
+function dateColumnIndex(headers: string[], aliases: string[]): number {
+  const normalizedAliases = aliases.map(normalizeKey);
+  const normalizedHeaders = headers.map(normalizeKey);
+  for (const alias of normalizedAliases) {
+    const exact = normalizedHeaders.indexOf(alias);
+    if (exact >= 0) return exact;
+    const suffix = normalizedHeaders
+      .map((header, index) => ({ header, index }))
+      .filter(({ header }) => header.endsWith(`_${alias}`))
+      .sort((left, right) => left.header.length - right.header.length)[0];
+    if (suffix) return suffix.index;
+  }
+  return -1;
+}
+
+/**
+ * Cheap "could this row possibly be in range?" test on raw column text.
+ * Returns true whenever it cannot tell, so a missing or unparseable date
+ * always falls through to the full row handling.
+ */
+function rowNearRange(
+  values: string[],
+  startIndex: number,
+  endIndex: number,
+  slackStart?: number,
+  slackEnd?: number
+): boolean {
+  const startText = values[startIndex];
+  if (!startText) return true;
+  const rowStart = parseSamsungDate(startText);
+  if (!rowStart) return true;
+  const endText = endIndex >= 0 ? values[endIndex] : undefined;
+  const rowEnd = (endText ? parseSamsungDate(endText) : undefined) ?? rowStart;
+  if (slackEnd !== undefined && rowStart.getTime() > slackEnd) return false;
+  if (slackStart !== undefined && rowEnd.getTime() < slackStart) return false;
+  return true;
 }
 
 function rowToRecord(sourceName: string, row: CsvRow): SamsungHealthRecord | undefined {
@@ -416,19 +484,39 @@ function inferRecordType(normalizedFile: string, row: CsvRow): string | undefine
   // makes daily summaries count the same activity multiple times.
   if (normalizedFile.includes("step_daily_trend")) return "samsung_health_steps";
   if (normalizedFile.includes("pedometer_")) return `samsung_health_${safeTypeFromFile(normalizedFile)}`;
-  if (haystack.includes("step")) return "samsung_health_steps";
+  // The file name names the data type; column names only describe fields that
+  // table happens to carry. Matching both in one pass lets a sibling column
+  // outvote the file itself: com.samsung.shealth.tracker.oxygen_saturation
+  // carries a heart_rate column and was classified as heart rate. Try the file
+  // name alone first, and fall back to column names only when it says nothing.
+  const byFileName = matchRecordType(normalizedFile);
+  if (byFileName) return byFileName;
+  const byColumns = matchRecordType(haystack);
+  if (byColumns) return byColumns;
+  if (Object.keys(row).length > 0 && normalizedFile.includes("samsung")) return `samsung_health_${safeTypeFromFile(normalizedFile)}`;
+  return undefined;
+}
+
+/**
+ * Ordered keyword match, shared by the file-name pass and the column-name
+ * fallback of `inferRecordType`. Order matters: the more specific keyword of
+ * an overlapping pair goes first, so `sleep_stage` is not swallowed by
+ * `sleep`, `hrv` not by `heart_rate`, and `oxygen_saturation` not by the
+ * `heart_rate` column that ships alongside it.
+ */
+function matchRecordType(haystack: string): string | undefined {
   if (haystack.includes("sleep_stage")) return "samsung_health_sleep_stage";
   if (haystack.includes("sleep")) return "samsung_health_sleep";
+  if (haystack.includes("step")) return "samsung_health_steps";
   if (haystack.includes("resting_heart")) return "samsung_health_resting_heart_rate";
   if (haystack.includes("hrv") || haystack.includes("heart_rate_variability")) return "samsung_health_hrv";
-  if (haystack.includes("heart_rate") || haystack.includes("heartrate")) return "samsung_health_heart_rate";
   if (haystack.includes("oxygen") || haystack.includes("spo2") || haystack.includes("saturation")) return "samsung_health_oxygen_saturation";
+  if (haystack.includes("heart_rate") || haystack.includes("heartrate")) return "samsung_health_heart_rate";
   if (haystack.includes("respiratory")) return "samsung_health_respiratory_rate";
   if (haystack.includes("weight") || haystack.includes("body_weight")) return "samsung_health_body_weight";
   if (haystack.includes("body_fat")) return "samsung_health_body_fat";
   if (haystack.includes("distance")) return "samsung_health_distance";
   if (haystack.includes("calorie") || haystack.includes("energy")) return "samsung_health_active_energy";
-  if (Object.keys(row).length > 0 && normalizedFile.includes("samsung")) return `samsung_health_${safeTypeFromFile(normalizedFile)}`;
   return undefined;
 }
 
@@ -592,6 +680,27 @@ function countZipCsvEntries(zipPath: string): Promise<number> {
 }
 
 function parseCsv(text: string): CsvRow[] {
+  const table = parseCsvTable(text);
+  return table.rows.map((values) => toCsvRow(table.headers, values));
+}
+
+/**
+ * Builds a row object from a header list and one raw value row. Split out of
+ * `parseCsvTable` so a caller that only needs a couple of columns to decide
+ * whether a row is in range can skip materializing the whole object.
+ */
+function toCsvRow(headers: string[], values: string[]): CsvRow {
+  const row: CsvRow = {};
+  for (let index = 0; index < headers.length; index += 1) row[headers[index]] = values[index] ?? "";
+  return row;
+}
+
+interface CsvTable {
+  headers: string[];
+  rows: string[][];
+}
+
+function parseCsvTable(text: string): CsvTable {
   const trimmed = text.replace(/^\uFEFF/, "");
   const sampleLines = trimmed.split(/\r?\n/, 5).filter(Boolean);
   const delimiter = sampleLines
@@ -638,7 +747,7 @@ function parseCsv(text: string): CsvRow[] {
   rows.push(row);
 
   const firstNonEmptyIndex = rows.findIndex((candidate) => candidate.some(Boolean));
-  if (firstNonEmptyIndex < 0) return [];
+  if (firstNonEmptyIndex < 0) return { headers: [], rows: [] };
   const firstNonEmptyRow = rows[firstNonEmptyIndex];
   // Samsung Health exports written by recent app versions start each CSV with
   // a data-type/version preamble, for example:
@@ -647,12 +756,10 @@ function parseCsv(text: string): CsvRow[] {
   const headerRow = isSamsungExportPreamble(firstNonEmptyRow)
     ? rows.slice(firstNonEmptyIndex + 1).find((candidate) => candidate.some(Boolean))
     : firstNonEmptyRow;
-  if (!headerRow) return [];
+  if (!headerRow) return { headers: [], rows: [] };
   const headerIndex = rows.indexOf(headerRow);
   const headers = headerRow.map((value, index) => value || `column_${index + 1}`);
-  return rows.slice(headerIndex + 1)
-    .filter((values) => values.some(Boolean))
-    .map((values) => Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""])));
+  return { headers, rows: rows.slice(headerIndex + 1).filter((values) => values.some(Boolean)) };
 }
 
 function isSamsungExportPreamble(row: string[]): boolean {
