@@ -54,7 +54,7 @@
   "author": "David Mosiah",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.21.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "yauzl": "^3.2.0",
@@ -87,8 +87,9 @@
   "main": "dist/index.js",
   "overrides": {
     "@hono/node-server": "2.1.0",
-    "fast-uri": "3.1.5",
-    "ip-address": "10.4.0",
-    "hono": "4.13.1"
+    "fast-uri": "3.1.8",
+    "ip-address": "10.7.1",
+    "hono": "4.13.7",
+    "proxy-addr": "2.0.8"
   }
 }

@@ -1,3 +1,10 @@
+## Unreleased
+
+### Security
+
+- Raised the exact `overrides` pins that blocked Dependabot security updates (`security_update_not_possible`) to the patched floors: `hono` 4.13.7, `fast-uri` 3.1.8, `ip-address` 10.7.1; added `proxy-addr` 2.0.8 (GHSA-jqcg-44mw-7w3h). `qs` already resolves to 6.16.0 (no override needed).
+- Bumped `@modelcontextprotocol/sdk` to `^1.31.0` (resolves 1.32.1; GHSA-6qxp-vccf-f47h). `npm audit`: 8 -> 0.
+
 ## 0.7.4 - 2026-08-29
 
 Skill layer ships in-package (`skill/SKILL.md`). Agents can use MCP tools **or** `call <tool> --json` on the same binary; mutation gates stay identical.
