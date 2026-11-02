@@ -1,4 +1,4 @@
-## 0.8.0 — release candidate (not published)
+## 0.8.0 — 2026-11-02
 
 ### Compatibility and migration
 
@@ -20,8 +20,9 @@
   source fields. Phone/watch records with different or uncertain identities remain
   separate. PR19/issue18 are not treated as fully resolved.
 
-See [0.8.0 candidate and migration guide](docs/release-0.8.0.md). This heading is
-preparation, not evidence that npm/latest or a GitHub release has been published.
+See the [0.8.0 migration guide](docs/release-0.8.0.md) and
+[published release](https://github.com/davidmosiah/samsung-health-mcp/releases/tag/v0.8.0).
+npm `latest` was verified as 0.8.0 at publication.
 
 ### Fixed
 

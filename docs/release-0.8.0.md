@@ -1,10 +1,16 @@
-# Samsung Health 0.8.0 candidate
+# Samsung Health 0.8.0 release
 
-This is a versioned release candidate in source, **not a published npm artifact**.
-The package is `samsung-health-mcp-unofficial`; both existing CLI bin names remain.
-Preparation does not create a git tag, GitHub release, npm version or dist-tag.
-The final artifact hash, commit, file list, isolated tests and CI must be presented
-for explicit publication approval before any registry change.
+[samsung-health-mcp-unofficial@0.8.0](https://www.npmjs.com/package/samsung-health-mcp-unofficial/v/0.8.0)
+was published on 2026-11-02; npm `latest` was verified as 0.8.0 at publication.
+The [v0.8.0 GitHub release](https://github.com/davidmosiah/samsung-health-mcp/releases/tag/v0.8.0)
+points to commit `24ac407fcafb7e80edc09db94793b1c59a8af8fc`.
+Both existing CLI bin names remain available.
+
+The published tarball is the reviewed candidate artifact, SHA-256
+`c70dee08f4e658d7c47b057bb1bb84a46d6f241d6b01b16d6d333edd570cec62`.
+Its bundled documentation retains the preparation-time candidate labels; this
+updated guide records the completed publication. The published package and tag
+are unchanged—this documentation correction does not replace or republish them.
 
 ## Before upgrading from 0.7.4
 
@@ -60,22 +66,21 @@ the integrated corrections and synthetic tests were independently authored.
 
 These are bounded-operation controls, not total-RAM or medical-accuracy guarantees.
 Unix symlink fixtures are exercised; Windows privileged symlink fixtures are
-skipped. Platform testing limitations must accompany the final artifact approval.
+skipped. These platform-testing limitations also apply to the published version.
 
-## Release gates and rollback
+## Release verification and rollback
 
-1. Freeze a reviewed commit; require typecheck/build/full suite, metadata pins,
-   input/storage negatives, exact-head CI and installed/lock audits.
-2. Build explicitly, then inspect `npm pack --dry-run --json --ignore-scripts` and
-   create a local tarball with scripts disabled. Check every packed path and the
-   compiled version/bins. Exclude profiles, credentials, exports and transient data.
-3. Test the actual tarball in an isolated HOME using synthetic fixtures and local
-   stdio/HTTP only. Record SHA-256, npm integrity, file list and tested runtime/OS.
-4. Revalidate npm availability and obtain explicit package/version/dist-tag/tag
-   approval. Use only the existing authorized publishing mechanism; missing access
-   is a blocker, not permission to create tokens or change publisher settings.
-5. After an authorized release, verify public registry integrity and cold install
-   before claiming issue17 fixed. No npm publication is part of this candidate.
+The reviewed artifact passed typecheck/build/full suite, installed/lock audits
+(zero known vulnerabilities at verification), and Linux CI on Node 20/22/24.
+All three CI pack dry-runs reproduced its exact npm integrity. Twelve synthetic
+runtime suites exercised the locally installed tarball without recompilation;
+independent review checked all 125 packed files and reran selected fixtures.
+
+Public registry readback confirmed version 0.8.0, `latest` and the approved
+integrity. GitHub tag v0.8.0 points to the reviewed merge commit above. No real
+exports/accounts were used for these checks; this is not a claim that an individual
+user's private export or every platform was tested. The main-branch documentation
+now reflects release status without modifying the immutable published artifact.
 
 A published npm name/version cannot be overwritten. Prefer a reviewed corrective
 version if needed; moving a dist-tag or deprecating a version is another authorized
