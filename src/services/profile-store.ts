@@ -212,7 +212,8 @@ function clone<T>(value: T): T {
 
 async function fileExists(path: string): Promise<boolean> {
   try {
-    await fs.access(path);
+    const stat = await fs.lstat(path);
+    if (stat.isSymbolicLink()) throw new Error("Profile symlinks are not supported.");
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
