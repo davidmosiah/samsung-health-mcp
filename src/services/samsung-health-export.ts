@@ -4,6 +4,7 @@ import type { Readable } from "node:stream";
 import yauzl from "yauzl";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "../constants.js";
 import type { SamsungHealthRecord, SamsungHealthWorkout } from "../types.js";
+import { samsungDayDate } from "./samsung-day-date.js";
 import { sanitizeMetadata } from "./privacy.js";
 import { parseFlexibleDate } from "./time.js";
 import {
@@ -403,6 +404,8 @@ function rowToRecord(sourceName: string, row: CsvRow): SamsungHealthRecord | und
   const startDate = bestDate(row, DATE_KEYS.start);
   const endDate = bestDate(row, DATE_KEYS.end) ?? startDate;
   const creationDate = bestDate(row, DATE_KEYS.created);
+  const calendarDate = samsungDataTypeFromFile(normalizedFile) === "step_daily_trend" && !readString(row, ["start_time"])
+    ? samsungDayDate(readString(row, ["day_time"])) : undefined;
   const metric = metricForRecord(type, normalizedFile, row, startDate, endDate);
   if (metric.value === undefined && !startDate && !endDate) return undefined;
   const textValue = type === "samsung_health_sleep" || type === "samsung_health_sleep_stage"
@@ -410,6 +413,7 @@ function rowToRecord(sourceName: string, row: CsvRow): SamsungHealthRecord | und
     : metric.value === undefined ? undefined : String(metric.value);
 
   return {
+    ...(calendarDate ? { calendarDate } : {}),
     type,
     sourceName: inferSourceName(row) ?? sourceName,
     unit: metric.unit,

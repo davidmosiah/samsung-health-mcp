@@ -156,7 +156,7 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
   privacyMode?: PrivacyMode;
 }) {
   const privacyMode = options.privacyMode ?? "summary";
-  const dayRecords = records.filter((record) => recordOverlaps(record.startDate, record.endDate, window.start, window.end));
+  const dayRecords = records.filter((record) => record.calendarDate ? record.calendarDate === window.date : recordOverlaps(record.startDate, record.endDate, window.start, window.end));
   const dayWorkouts = workouts.filter((workout) => recordOverlaps(workout.startDate, workout.endDate, window.start, window.end));
   const workoutView = workoutPrivacyView(dayWorkouts, privacyMode, options.timezone);
   const steps = sumType(dayRecords, "samsung_health_steps");

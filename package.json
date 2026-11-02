@@ -24,7 +24,7 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "smoke": "node scripts/smoke-tools.mjs",
-    "test": "npm run typecheck && npm run build && npm run smoke && npm run test:export && npm run test:export-regression && npm run test:privacy && npm run test:freshness && npm run test:incremental-cache && npm run test:watch && npm run smoke:http && npm run test:cli-ux && npm run test:agent-readiness && npm run test:hermes-agent && npm run test:demo-contract && npm run test:metadata && npm run test:skill-surface && npm run test:input-limits",
+    "test": "npm run typecheck && npm run build && npm run smoke && npm run test:export && npm run test:export-regression && npm run test:privacy && npm run test:freshness && npm run test:incremental-cache && npm run test:watch && npm run smoke:http && npm run test:cli-ux && npm run test:agent-readiness && npm run test:hermes-agent && npm run test:demo-contract && npm run test:metadata && npm run test:skill-surface && npm run test:input-limits && npm run test:calendar-date",
     "test:export": "node scripts/export-parser-test.mjs",
     "test:export-regression": "node scripts/export-parser-regression-test.mjs",
     "test:privacy": "node scripts/privacy-leak-test.mjs",
@@ -39,7 +39,8 @@
     "test:metadata": "node scripts/metadata-check.mjs",
     "test:demo-contract": "node scripts/demo-contract-test.mjs",
     "test:skill-surface": "node scripts/test-skill-surface.mjs",
-    "test:input-limits": "node scripts/input-limits-test.mjs"
+    "test:input-limits": "node scripts/input-limits-test.mjs",
+    "test:calendar-date": "node scripts/test-calendar-date.mjs"
   },
   "keywords": [
     "mcp",
