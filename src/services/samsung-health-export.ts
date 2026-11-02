@@ -293,18 +293,29 @@ export function parseSamsungDate(value: string | undefined): Date | undefined {
       if (!Number.isNaN(parsed.getTime()) && milliseconds >= MIN_SAMSUNG_HEALTH_TIMESTAMP_MS) return parsed;
     }
   }
-  const compact = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?$/.exec(trimmed);
+  // Year-first export dates have an explicit grammar. Validate calendar/time
+  // components before offset conversion; Date.UTC alone silently normalizes them.
+  const compact = /^(\d{4})([./-])(\d{1,2})\2(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:\s*(Z|[+-]\d{2}:?\d{2}))?)?$/i.exec(trimmed);
   if (compact) {
-    const parsed = new Date(Date.UTC(
-      Number(compact[1]),
-      Number(compact[2]) - 1,
-      Number(compact[3]),
-      Number(compact[4] ?? 0),
-      Number(compact[5] ?? 0),
-      Number(compact[6] ?? 0)
-    ));
-    if (!Number.isNaN(parsed.getTime())) return parsed;
+    const year = Number(compact[1]), month = Number(compact[3]), day = Number(compact[4]);
+    const hour = Number(compact[5] ?? 0), minute = Number(compact[6] ?? 0), second = Number(compact[7] ?? 0);
+    const millisecond = Number((compact[8] ?? "").padEnd(3, "0").slice(0, 3));
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) return undefined;
+    const parsed = new Date(0);
+    parsed.setUTCFullYear(year, month - 1, day);
+    parsed.setUTCHours(hour, minute, second, millisecond);
+    if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) return undefined;
+    const offset = compact[9];
+    if (offset && offset.toUpperCase() !== "Z") {
+      const digits = offset.slice(1).replace(":", "");
+      const hours = Number(digits.slice(0, 2)), minutes = Number(digits.slice(2));
+      if (hours > 23 || minutes > 59) return undefined;
+      parsed.setTime(parsed.getTime() - (offset[0] === "+" ? 1 : -1) * (hours * 60 + minutes) * 60_000);
+    }
+    return parsed;
   }
+  // Never send malformed year-first dates through the permissive Date fallback.
+  if (/^\d{4}[./-]/.test(trimmed)) return undefined;
   return parseFlexibleDate(trimmed);
 }
 
