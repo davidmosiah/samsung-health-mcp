@@ -31,13 +31,14 @@
 
 ---
 
-## 0.8.0 candidate status
+## 0.8.0 release
 
-The source tree prepares **0.8.0**, not an already published npm release.
+[Version 0.8.0](https://www.npmjs.com/package/samsung-health-mcp-unofficial/v/0.8.0)
+was published on 2026-11-02 and npm `latest` was verified at publication.
 Read the [migration and compatibility notes](docs/release-0.8.0.md) before upgrading:
 HTTP network binds are restricted to loopback, imports/profiles have quotas, and
 corrected timestamps/cursor invalidation may change totals or replay records.
-Do not request `@0.8.0` from npm until publication is independently confirmed.
+For a pinned install, use `npx -y samsung-health-mcp-unofficial@0.8.0`.
 
 ## HTTP (v2 stateless)
 
