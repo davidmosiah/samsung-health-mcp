@@ -52,7 +52,7 @@ try {
   assert.equal(existsSync(cachePath), true, 'cache file should be created');
 
   const cache1 = JSON.parse(readFileSync(cachePath, 'utf8'));
-  assert.equal(cache1.schema_version, 2, 'cache should persist the current parser schema version');
+  assert.equal(cache1.schema_version, 3, 'cache should persist the current parser schema version');
   assert.ok(cache1.categories?.samsung_health_steps, 'should persist last_parsed_at for the step category');
   assert.equal(typeof cache1.export_mtime_ms, 'number');
   assert.equal(typeof cache1.export_path, 'string');
@@ -72,7 +72,7 @@ try {
 
   // 4. A cache from an older parser schema is invalidated even when the
   // export path and mtime have not changed.
-  writeFileSync(cachePath, `${JSON.stringify({ ...cache1, schema_version: 1 }, null, 2)}\n`);
+  writeFileSync(cachePath, `${JSON.stringify({ ...cache1, schema_version: 2 }, null, 2)}\n`);
   const afterSchemaChange = await client.callTool({
     name: 'samsung_health_list_records',
     arguments: {
@@ -85,7 +85,7 @@ try {
   });
   assert.equal(afterSchemaChange.structuredContent?.count, 4, 'parser schema change should invalidate cache and re-parse');
   const cacheAfterSchemaChange = JSON.parse(readFileSync(cachePath, 'utf8'));
-  assert.equal(cacheAfterSchemaChange.schema_version, 2, 'cache should be rewritten with the current schema version');
+  assert.equal(cacheAfterSchemaChange.schema_version, 3, 'cache should be rewritten with the current schema version');
 
   // 5. Connection status now shows the cache populated.
   const statusWithCache = await client.callTool({
