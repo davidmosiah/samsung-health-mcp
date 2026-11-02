@@ -1,8 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { SERVER_VERSION, PINNED_NPM_PACKAGE } from '../dist/constants.js';
 
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 const serverJson = JSON.parse(readFileSync('server.json', 'utf8'));
 const errors = [];
+if (SERVER_VERSION !== packageJson.version) errors.push('Compiled server version does not match package.json');
+if (PINNED_NPM_PACKAGE !== `${packageJson.name}@${packageJson.version}`) errors.push('Compiled install pin does not match package.json');
 
 function requireFile(path) {
   if (!existsSync(path)) errors.push(`Missing required file: ${path}`);

@@ -1,4 +1,27 @@
-## Unreleased
+## 0.8.0 — release candidate (not published)
+
+### Compatibility and migration
+
+- HTTP now accepts only `127.0.0.1`, `localhost` (bound to IPv4 loopback without DNS)
+  and `::1`. Direct LAN/public/container-wildcard binds fail before listening.
+  Stdio remains the default. Loopback is not authentication; do not expose an
+  unauthenticated reverse proxy or tunnel. No deployment configuration is changed.
+- Profile input/output is bounded to 256 KiB, strictly validated and stored under
+  a cooperative lock with private atomic writes. Invalid files, access errors and
+  pre-existing symlinks fail closed; abandoned locks require deliberate recovery.
+- CSV/ZIP imports enforce 64 MiB per file, 256 MiB per operation, 10,000 entries
+  and 2,000,000 cells. Oversized imports now fail rather than consume unbounded
+  input. These are per-operation limits, not a process-wide memory guarantee.
+- Samsung timestamps, daily calendar grouping and exercise units are corrected;
+  strict calendar parsing preserves millisecond precision and rejects rollovers.
+  Incremental cursor schema 3 invalidates older cursors and may replay records.
+  Reconcile downstream stores rather than appending blindly.
+- Duplicate removal remains limited to an unambiguous same record ID plus exact
+  source fields. Phone/watch records with different or uncertain identities remain
+  separate. PR19/issue18 are not treated as fully resolved.
+
+See [0.8.0 candidate and migration guide](docs/release-0.8.0.md). This heading is
+preparation, not evidence that npm/latest or a GitHub release has been published.
 
 ### Fixed
 
@@ -12,8 +35,11 @@
 
 ### Security
 
-- Raised the exact `overrides` pins that blocked Dependabot security updates (`security_update_not_possible`) to the patched floors: `hono` 4.13.7, `fast-uri` 3.1.8, `ip-address` 10.7.1; added `proxy-addr` 2.0.8 (GHSA-jqcg-44mw-7w3h). `qs` already resolves to 6.16.0 (no override needed).
-- Bumped `@modelcontextprotocol/sdk` to `^1.31.0` (resolves 1.32.1; GHSA-6qxp-vccf-f47h). `npm audit`: 8 -> 0.
+- SDK floor ^1.32.2 with bounded tool input (10,000 elements), 1 MiB HTTP JSON
+  limit and compressed-body rejection. Current locked dependency audit is checked
+  in release gates; it is a point-in-time result, not a future zero-risk guarantee.
+- Profile reads/migrations reject live and dangling symlinks at canonical and both
+  legacy paths without overwriting them; only ENOENT is treated as missing.
 
 ## 0.7.4 - 2026-08-29
 
