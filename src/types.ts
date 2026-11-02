@@ -22,6 +22,8 @@ export interface SamsungHealthConfig {
 }
 
 export interface SamsungHealthRecord {
+  /** Calendar date encoded by a Samsung daily table; not a fabricated timestamp. */
+  calendarDate?: string;
   type: string;
   sourceName?: string;
   unit?: string;

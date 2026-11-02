@@ -79,8 +79,8 @@ export function recordPrivacyView(records: SamsungHealthRecord[], mode: PrivacyM
         unit: record.unit,
         value: record.numeric_value ?? record.value,
         numeric_value: record.numeric_value,
-        start_date: dateOnlyInTimezone(record.startDate, timezone),
-        end_date: dateOnlyInTimezone(record.endDate, timezone),
+        start_date: record.calendarDate ?? dateOnlyInTimezone(record.startDate, timezone),
+        end_date: record.calendarDate ?? dateOnlyInTimezone(record.endDate, timezone),
         metadata_keys: record.metadata ? Object.keys(record.metadata).sort() : undefined
       })),
       disclosure: "structured_fields_without_creation_dates_source_names_or_raw_metadata"
