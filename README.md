@@ -31,6 +31,14 @@
 
 ---
 
+## 0.8.0 candidate status
+
+The source tree prepares **0.8.0**, not an already published npm release.
+Read the [migration and compatibility notes](docs/release-0.8.0.md) before upgrading:
+HTTP network binds are restricted to loopback, imports/profiles have quotas, and
+corrected timestamps/cursor invalidation may change totals or replay records.
+Do not request `@0.8.0` from npm until publication is independently confirmed.
+
 ## HTTP (v2 stateless)
 
 Default is **stdio**. Optional Streamable HTTP — no session id, JSON responses, loopback only:
