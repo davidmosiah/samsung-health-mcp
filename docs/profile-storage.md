@@ -18,7 +18,10 @@ while a connector may be active. There is no automatic stale-lock recovery.
 Profile JSON input files and serialized output are limited to 256 KiB of UTF-8 bytes.
 This includes whitespace and metadata. Reads use a fixed limit-plus-one buffer and
 check actual bytes, not only an initial stat; the profile must be a regular file.
-Invalid UTF-8 and symlinks (where no-follow is supported) are rejected. Over-quota
+Invalid UTF-8 is rejected. Existence checks reject symbolic links, including
+dangling links, at the canonical and both legacy profile paths before reading,
+updating or migrating. Linked target bytes and the link are left unchanged.
+Only ENOENT means absent; access and other I/O failures remain errors. Over-quota
 profiles require explicit shortening/restoration; they are not overwritten with
 defaults. The quota is not a total process-memory guarantee for tool input already
 parsed by the transport. Existing v1 field validation and secret rejection remain.
@@ -37,3 +40,9 @@ Checking an absent canonical profile may now create its private parent directory
 and briefly acquire a lock while checking legacy migration. Access failures other
 than ENOENT fail closed without falling back to a legacy file. Filesystem errors
 are reported without exposing local paths or file contents.
+
+This rejects pre-existing local symlinks; it is not a remote exploit claim or
+a guarantee against concurrent hostile filesystem replacement. Existing open-time
+no-follow checks remain where supported. Synthetic symlink regressions cover all
+three paths and read/update/migration on Unix; Windows symlink privilege-dependent
+fixtures are explicitly skipped, not claimed as tested.
