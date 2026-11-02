@@ -1,6 +1,8 @@
-import { promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
+import { promises as fs, createReadStream } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import type { Readable } from "node:stream";
+import { ExportBudget, ExportBudgetError, readBoundedText, type ExportReadLimits } from "./export-budget.js";
 import yauzl from "yauzl";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "../constants.js";
 import type { SamsungHealthRecord, SamsungHealthWorkout } from "../types.js";
@@ -153,7 +155,8 @@ export async function inspectExportLocation(inputPath?: string): Promise<ExportL
       size_bytes: stat.size,
       note: "Expected a Samsung Health export directory, .csv file, or .zip file containing CSVs."
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof ExportBudgetError) throw error;
     return {
       input_path: inputPath,
       resolved_path: resolvedPath,
@@ -324,13 +327,15 @@ async function parseExportEntities(
   range?: { start?: Date; end?: Date }
 ): Promise<void> {
   const sources = await readCsvSources(location);
+  const parseBudget = new ExportBudget();
+  const seenExerciseRecords = new Set<string>();
   const slackStart = range?.start ? range.start.getTime() - RANGE_PREFILTER_SLACK_MS : undefined;
   const slackEnd = range?.end ? range.end.getTime() + RANGE_PREFILTER_SLACK_MS : undefined;
   const prefiltering = slackStart !== undefined || slackEnd !== undefined;
   let stopped = false;
   for (const source of sources) {
     if (stopped) break;
-    const table = parseCsvTable(source.text);
+    const table = parseCsvTable(source.text, parseBudget);
     if (!table.headers.length) continue;
     // Resolve the date columns once per file rather than once per row:
     // findEntry walks every column of every row, which is most of the parse
@@ -343,11 +348,23 @@ async function parseExportEntities(
       const row = toCsvRow(table.headers, values);
       const workout = rowToWorkout(source.name, row);
       if (workout) {
+        const identity = exactSamsungExerciseIdentity(source.name, row);
+        if (identity && seenExerciseRecords.has(identity)) continue;
+        if (identity) seenExerciseRecords.add(identity);
         stopped = visitor.onWorkout?.(workout) ?? false;
         continue;
       }
       const record = rowToRecord(source.name, row);
       if (record) stopped = visitor.onRecord?.(record) ?? false;
+      // Only Samsung's all-device aggregate is a canonical daily distance.
+      if (record && !stopped && samsungDataTypeFromFile(normalizeKey(basename(source.name))) === "step_daily_trend"
+          && readNumber(row, ["source_type"]) === -2) {
+        const meters = readNumber(row, ["distance"]);
+        if (meters !== undefined) {
+          const km = round(meters / 1000);
+          stopped = visitor.onRecord?.({ ...record, type: "samsung_health_distance", unit: "km", value: String(km), numeric_value: km }) ?? false;
+        }
+      }
     }
   }
 }
@@ -401,10 +418,11 @@ function rowToRecord(sourceName: string, row: CsvRow): SamsungHealthRecord | und
   const type = inferRecordType(normalizedFile, row);
   if (!type) return undefined;
 
-  const startDate = bestDate(row, DATE_KEYS.start);
-  const endDate = bestDate(row, DATE_KEYS.end) ?? startDate;
-  const creationDate = bestDate(row, DATE_KEYS.created);
-  const calendarDate = samsungDataTypeFromFile(normalizedFile) === "step_daily_trend" && !readString(row, ["start_time"])
+  const samsungSource = samsungDataTypeFromFile(normalizeKey(basename(sourceName))) !== undefined;
+  const startDate = bestDate(row, DATE_KEYS.start, samsungSource);
+  const endDate = bestDate(row, DATE_KEYS.end, samsungSource) ?? startDate;
+  const creationDate = bestDate(row, DATE_KEYS.created, samsungSource);
+  const calendarDate = ["step_daily_trend", "calories_burned_details"].includes(samsungDataTypeFromFile(normalizedFile) ?? "") && !readString(row, ["start_time"])
     ? samsungDayDate(readString(row, ["day_time"])) : undefined;
   const metric = metricForRecord(type, normalizedFile, row, startDate, endDate);
   if (metric.value === undefined && !startDate && !endDate) return undefined;
@@ -426,11 +444,27 @@ function rowToRecord(sourceName: string, row: CsvRow): SamsungHealthRecord | und
   };
 }
 
+/** Deduplicate only an identical record with an explicit record ID, never a device ID or temporal overlap. */
+function exactSamsungExerciseIdentity(sourceName: string, row: CsvRow): string | undefined {
+  if (samsungDataTypeFromFile(normalizeKey(basename(sourceName))) !== "exercise") return undefined;
+  const identityKeys = new Set(["uuid", "datauuid", "com_samsung_health_exercise_uuid", "com_samsung_health_exercise_datauuid", "com_samsung_shealth_exercise_uuid", "com_samsung_shealth_exercise_datauuid"]);
+  const identities = Object.entries(row).filter(([key, value]) => identityKeys.has(normalizeKey(key)) && value.trim()).map(([, value]) => value.trim());
+  if (!identities.length || new Set(identities).size !== 1 || !/^[A-Za-z0-9_-]{10,36}$/.test(identities[0])) return undefined;
+  // Compare unrounded source fields, not lossy normalized output. File names are
+  // excluded so exact copies of a record across export files still collapse.
+  const payload = Object.entries(row).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
+  // Private, per-parse fingerprint: raw identifiers are never added to metadata or output.
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
 function rowToWorkout(sourceName: string, row: CsvRow): SamsungHealthWorkout | undefined {
   if (!isWorkoutSource(sourceName)) return undefined;
-  const startDate = bestDate(row, DATE_KEYS.start);
-  const endDate = bestDate(row, DATE_KEYS.end) ?? startDate;
-  const duration = durationMinutes(row, startDate, endDate);
+  const samsungSource = samsungDataTypeFromFile(normalizeKey(basename(sourceName))) !== undefined;
+  const startDate = bestDate(row, DATE_KEYS.start, samsungSource);
+  const endDate = bestDate(row, DATE_KEYS.end, samsungSource) ?? startDate;
+  const samsungExercise = samsungDataTypeFromFile(normalizeKey(basename(sourceName))) === "exercise";
+  const milliseconds = samsungExercise ? readNumber(row, ["duration"]) : undefined;
+  const duration = milliseconds !== undefined ? round(milliseconds / 60_000) : durationMinutes(row, startDate, endDate);
   const distance = readNumber(row, ["distance", "total_distance", "distance_meter", "distance_m", "distance_km"]);
   const energy = readNumber(row, ["calorie", "calories", "calorie_count", "kcal", "total_calorie", "active_calorie"]);
   const workoutActivityType = readString(row, ["exercise_type", "exercise_name", "activity_type", "workout_type", "type", "name"]) ?? "exercise";
@@ -439,12 +473,13 @@ function rowToWorkout(sourceName: string, row: CsvRow): SamsungHealthWorkout | u
   return {
     workoutActivityType,
     sourceName: inferSourceName(row) ?? sourceName,
-    creationDate: bestDate(row, DATE_KEYS.created),
+    creationDate: bestDate(row, DATE_KEYS.created, samsungSource),
     startDate,
     endDate,
     duration,
     durationUnit: duration === undefined ? undefined : "min",
-    totalDistance: normalizeDistance(distance, row),
+    totalDistance: samsungExercise && !readString(row, ["distance_unit", "unit"])
+      ? (distance === undefined ? undefined : round(distance / 1000)) : normalizeDistance(distance, row),
     totalDistanceUnit: distance === undefined ? undefined : "km",
     totalEnergyBurned: energy,
     totalEnergyBurnedUnit: energy === undefined ? undefined : "kcal",
@@ -476,6 +511,7 @@ function inferRecordType(normalizedFile: string, row: CsvRow): string | undefine
     if (samsungType === "oxygen_saturation" || samsungType === "tracker_oxygen_saturation") return "samsung_health_oxygen_saturation";
     if (samsungType === "respiratory_rate") return "samsung_health_respiratory_rate";
     if (samsungType === "weight" || samsungType === "body_weight") return "samsung_health_body_weight";
+    if (samsungType === "calories_burned_details") return readNumber(row, ["active_calorie"]) === undefined ? undefined : "samsung_health_active_energy";
     if (samsungType === "body_fat") return "samsung_health_body_fat";
     if (samsungType === "distance") return "samsung_health_distance";
     if (samsungType === "calorie" || samsungType === "calories" || samsungType === "active_energy") return "samsung_health_active_energy";
@@ -545,7 +581,8 @@ function metricForRecord(type: string, normalizedFile: string, row: CsvRow, star
     case "samsung_health_distance":
       return { value: normalizeDistance(readNumber(row, ["distance", "distance_meter", "distance_m", "distance_km", "value"]), row), unit: "km" };
     case "samsung_health_active_energy":
-      return { value: readNumber(row, ["calorie", "calories", "calorie_count", "kcal", "value"]), unit: "kcal" };
+      return { value: readNumber(row, samsungDataTypeFromFile(normalizedFile) === "calories_burned_details"
+        ? ["active_calorie"] : ["calorie", "calories", "calorie_count", "kcal", "value"]), unit: "kcal" };
     case "samsung_health_sleep":
     case "samsung_health_sleep_stage":
       return { value: durationMinutes(row, startDate, endDate), unit: "min" };
@@ -569,87 +606,86 @@ function normalizeLimit(value: number | undefined): number {
   return Math.min(Math.max(Math.trunc(value), 1), MAX_LIMIT);
 }
 
-async function readCsvSources(location: ExportLocation): Promise<CsvSource[]> {
+/** Exported for small-limit integration fixtures; MCP handlers use fixed defaults. */
+export async function readCsvSources(location: ExportLocation, limits?: ExportReadLimits): Promise<CsvSource[]> {
+  const budget = new ExportBudget(limits);
   if (location.kind === "csv" && location.resolved_path) {
-    return [{
-      name: basename(location.resolved_path),
-      text: await fs.readFile(location.resolved_path, "utf8"),
-      size_bytes: location.size_bytes,
-      modified_at: location.modified_at
-    }];
+    budget.entry();
+    const stat = await fs.stat(location.resolved_path);
+    budget.file(stat.size);
+    return [{ name: basename(location.resolved_path), text: await readBoundedText(createReadStream(location.resolved_path), budget), size_bytes: stat.size, modified_at: location.modified_at }];
   }
-  if (location.kind === "directory" && location.resolved_path) return readDirectoryCsvSources(location.resolved_path);
-  if (location.kind === "zip" && location.resolved_path) return readZipCsvSources(location.resolved_path);
+  if (location.kind === "directory" && location.resolved_path) {
+    const files = await listCsvFiles(location.resolved_path, budget);
+    const sources: CsvSource[] = [];
+    // Sequential reads avoid one pending full-file buffer per directory entry.
+    for (const file of files) {
+      const stat = await fs.stat(file);
+      budget.file(stat.size);
+      sources.push({ name: file.slice(location.resolved_path.length + 1), text: await readBoundedText(createReadStream(file), budget), size_bytes: stat.size, modified_at: stat.mtime.toISOString() });
+    }
+    return sources;
+  }
+  if (location.kind === "zip" && location.resolved_path) return visitZipCsv(location.resolved_path, budget, true);
   throw new Error(location.note ?? "Unsupported Samsung Health export location.");
 }
 
-async function readDirectoryCsvSources(root: string): Promise<CsvSource[]> {
-  const files = await listCsvFiles(root);
-  return Promise.all(files.map(async (file) => {
-    const stat = await fs.stat(file);
-    return {
-      name: file.slice(root.length + 1),
-      text: await fs.readFile(file, "utf8"),
-      size_bytes: stat.size,
-      modified_at: stat.mtime.toISOString()
-    };
-  }));
-}
-
-function readZipCsvSources(zipPath: string): Promise<CsvSource[]> {
+function visitZipCsv(zipPath: string, budget: ExportBudget, read: boolean): Promise<CsvSource[]> {
   return new Promise((resolvePromise, reject) => {
-    yauzl.open(zipPath, { lazyEntries: true }, (openError, zipfile) => {
-      if (openError || !zipfile) {
-        reject(openError ?? new Error("Unable to open Samsung Health export zip."));
-        return;
-      }
+    yauzl.open(zipPath, { lazyEntries: true, validateEntrySizes: true, strictFileNames: true }, (openError, zipfile) => {
+      if (openError || !zipfile) { reject(openError ?? new Error("Unable to open Samsung Health export zip.")); return; }
       const sources: CsvSource[] = [];
-      zipfile.readEntry();
+      let settled = false;
+      let activeStream: Readable | undefined;
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        activeStream?.destroy(error instanceof Error ? error : new Error("Samsung export read failed."));
+        zipfile.close();
+        reject(error);
+      };
+      zipfile.on("error", fail);
       zipfile.on("entry", (entry) => {
-        const name = entry.fileName.replace(/\\/g, "/");
-        if (!name.toLowerCase().endsWith(".csv") || /\/$/.test(name)) {
-          zipfile.readEntry();
-          return;
-        }
-        zipfile.openReadStream(entry, (streamError, stream) => {
-          if (streamError || !stream) {
-            zipfile.close();
-            reject(streamError ?? new Error(`Unable to read ${name} from zip.`));
-            return;
-          }
-          streamToString(stream).then((text) => {
-            sources.push({ name, text, size_bytes: entry.uncompressedSize });
-            zipfile.readEntry();
-          }, (error) => {
-            zipfile.close();
-            reject(error);
+        if (settled) return;
+        try {
+          budget.entry(); // Includes ignored sidecars: metadata enumeration is bounded.
+          if (!entry.fileName.toLowerCase().endsWith(".csv") || entry.fileName.endsWith("/")) { zipfile.readEntry(); return; }
+          budget.file(entry.uncompressedSize);
+          if (!read) { sources.push({ name: entry.fileName, text: "", size_bytes: entry.uncompressedSize }); zipfile.readEntry(); return; }
+          zipfile.openReadStream(entry, (error, stream) => {
+            if (error || !stream) { fail(error ?? new Error("Unable to read Samsung export zip entry.")); return; }
+            if (settled) { stream.destroy(); return; }
+            activeStream = stream;
+            readBoundedText(stream, budget).then((text) => {
+              activeStream = undefined;
+              if (settled) return;
+              sources.push({ name: entry.fileName, text, size_bytes: entry.uncompressedSize });
+              zipfile.readEntry();
+            }, fail);
           });
-        });
+        } catch (error) { fail(error); }
       });
       zipfile.on("end", () => {
+        if (settled) return;
+        settled = true;
         zipfile.close();
         resolvePromise(sources.sort((left, right) => left.name.localeCompare(right.name)));
       });
-      zipfile.on("error", reject);
+      zipfile.readEntry();
     });
   });
 }
 
-async function countCsvFiles(root: string): Promise<number> {
-  return (await listCsvFiles(root)).length;
-}
+async function countCsvFiles(root: string): Promise<number> { return (await listCsvFiles(root, new ExportBudget())).length; }
 
-async function listCsvFiles(root: string): Promise<string[]> {
+async function listCsvFiles(root: string, budget: ExportBudget): Promise<string[]> {
   const files: string[] = [];
   async function visit(directory: string, depth: number): Promise<void> {
     if (depth > 6) return;
-    let entries;
-    try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
+    // opendir avoids allocating a complete unbounded readdir array first.
+    const entries = await fs.opendir(directory);
+    for await (const entry of entries) {
+      budget.entry();
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
       const fullPath = join(directory, entry.name);
       if (entry.isDirectory()) await visit(fullPath, depth + 1);
@@ -660,27 +696,8 @@ async function listCsvFiles(root: string): Promise<string[]> {
   return files.sort();
 }
 
-function countZipCsvEntries(zipPath: string): Promise<number> {
-  return new Promise((resolvePromise, reject) => {
-    yauzl.open(zipPath, { lazyEntries: true }, (openError, zipfile) => {
-      if (openError || !zipfile) {
-        reject(openError ?? new Error("Unable to open Samsung Health export zip."));
-        return;
-      }
-      let count = 0;
-      zipfile.readEntry();
-      zipfile.on("entry", (entry) => {
-        const name = entry.fileName.replace(/\\/g, "/").toLowerCase();
-        if (name.endsWith(".csv") && !name.endsWith("/")) count += 1;
-        zipfile.readEntry();
-      });
-      zipfile.on("end", () => {
-        zipfile.close();
-        resolvePromise(count);
-      });
-      zipfile.on("error", reject);
-    });
-  });
+async function countZipCsvEntries(zipPath: string): Promise<number> {
+  return (await visitZipCsv(zipPath, new ExportBudget(), false)).length;
 }
 
 function parseCsv(text: string): CsvRow[] {
@@ -704,15 +721,11 @@ interface CsvTable {
   rows: string[][];
 }
 
-function parseCsvTable(text: string): CsvTable {
+export function parseCsvTable(text: string, budget = new ExportBudget()): CsvTable {
   const trimmed = text.replace(/^\uFEFF/, "");
   const sampleLines = trimmed.split(/\r?\n/, 5).filter(Boolean);
   const delimiter = sampleLines
-    .map((line) => ({ delimiter: detectDelimiter(line), separators: Math.max(
-      (line.match(/,/g) ?? []).length,
-      (line.match(/;/g) ?? []).length,
-      (line.match(/\t/g) ?? []).length
-    ) }))
+    .map((line) => { const counts = delimiterCounts(line); return { delimiter: detectDelimiter(line), separators: Math.max(...Object.values(counts)) }; })
     .sort((left, right) => right.separators - left.separators)[0]?.delimiter ?? ",";
   const rows: string[][] = [];
   let field = "";
@@ -736,9 +749,11 @@ function parseCsvTable(text: string): CsvTable {
     if (char === "\"") {
       quoted = true;
     } else if (char === delimiter) {
+      budget.cell();
       row.push(field.trim());
       field = "";
     } else if (char === "\n") {
+      budget.cell();
       row.push(field.trim());
       rows.push(row);
       row = [];
@@ -747,6 +762,7 @@ function parseCsvTable(text: string): CsvTable {
       field += char;
     }
   }
+  budget.cell();
   row.push(field.trim());
   rows.push(row);
 
@@ -779,18 +795,20 @@ function isWorkoutSource(sourceName: string): boolean {
   return /(?:^|[._-])workouts?(?:[._-]|$)/i.test(fileName);
 }
 
+function delimiterCounts(line: string): Record<"," | ";" | "\t", number> {
+  const counts = { ",": 0, ";": 0, "\t": 0 };
+  for (const char of line) if (char === "," || char === ";" || char === "\t") counts[char] += 1;
+  return counts;
+}
+
 function detectDelimiter(line: string): "," | ";" | "\t" {
-  const counts = {
-    ",": (line.match(/,/g) ?? []).length,
-    ";": (line.match(/;/g) ?? []).length,
-    "\t": (line.match(/\t/g) ?? []).length
-  };
+  const counts = delimiterCounts(line);
   return Object.entries(counts).sort((left, right) => right[1] - left[1])[0]?.[0] as "," | ";" | "\t" ?? ",";
 }
 
-function bestDate(row: CsvRow, aliases: string[]): string | undefined {
+function bestDate(row: CsvRow, aliases: string[], samsungSource = false): string | undefined {
   const value = readString(row, aliases);
-  const parsed = parseSamsungDate(combineDateAndOffset(value, readString(row, ["time_offset"])));
+  const parsed = parseSamsungDate(samsungSource ? value : combineDateAndOffset(value, readString(row, ["time_offset"])));
   return parsed?.toISOString();
 }
 
@@ -863,6 +881,7 @@ function normalizeDistance(value: number | undefined, row: CsvRow): number | und
   if (value === undefined) return undefined;
   const unit = readString(row, ["distance_unit", "unit"])?.toLowerCase();
   if (unit?.includes("mile")) return round(value * 1.609344);
+  if (unit === "km" || unit?.includes("kilometer")) return round(value);
   if (unit?.includes("meter") || unit === "m" || value > 100) return round(value / 1000);
   return round(value);
 }
@@ -946,15 +965,6 @@ function cacheSnapshot(key: string, snapshot: SamsungHealthSnapshot): void {
  */
 export function clearSnapshotCache(): void {
   SNAPSHOT_CACHE.clear();
-}
-
-function streamToString(stream: Readable): Promise<string> {
-  return new Promise((resolvePromise, reject) => {
-    const chunks: Buffer[] = [];
-    stream.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-    stream.on("error", reject);
-    stream.on("end", () => resolvePromise(Buffer.concat(chunks).toString("utf8")));
-  });
 }
 
 function round(value: number | undefined): number | undefined {

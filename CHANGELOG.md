@@ -1,5 +1,15 @@
 ## Unreleased
 
+### Fixed
+
+- Correct Samsung-prefixed UTC timestamps and exercise millisecond/metre units;
+  include canonical daily distance and explicit active calories. Existing daily
+  totals may change. Generic CSV offset handling remains compatible. Deduplicate
+  only identical source records with the same record ID, never overlapping sessions.
+  Thanks to hitomi1 for the detailed reports in #18/#19. See
+  [source contracts and limitations](docs/samsung-source-contracts.md); the
+  phone/watch identity ambiguity remains separate from these corrections.
+
 ### Security
 
 - Raised the exact `overrides` pins that blocked Dependabot security updates (`security_update_not_possible`) to the patched floors: `hono` 4.13.7, `fast-uri` 3.1.8, `ip-address` 10.7.1; added `proxy-addr` 2.0.8 (GHSA-jqcg-44mw-7w3h). `qs` already resolves to 6.16.0 (no override needed).

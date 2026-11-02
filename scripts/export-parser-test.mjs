@@ -38,7 +38,7 @@ try {
     name: 'samsung_health_list_records',
     arguments: { type: 'samsung_health_heart_rate', limit: 10, privacy_mode: 'raw', response_format: 'json' }
   });
-  assert.equal(heartRateRecords.structuredContent?.records?.[0]?.startDate, '2026-05-01T11:05:00.000Z');
+  assert.equal(heartRateRecords.structuredContent?.records?.[0]?.startDate, '2026-05-01T08:05:00.000Z');
   assert.equal(parseSamsungDate('7006003'), undefined);
 
   const workouts = await client.callTool({ name: 'samsung_health_list_workouts', arguments: { limit: 10, response_format: 'json' } });

@@ -27,7 +27,7 @@ export interface IncrementalCacheData {
   categories: Record<string, string>;
 }
 
-const INCREMENTAL_CACHE_SCHEMA_VERSION = 2;
+const INCREMENTAL_CACHE_SCHEMA_VERSION = 3;
 const DEFAULT_CACHE: IncrementalCacheData = {
   schema_version: INCREMENTAL_CACHE_SCHEMA_VERSION,
   categories: {}
