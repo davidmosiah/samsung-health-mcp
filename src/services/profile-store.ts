@@ -29,6 +29,7 @@
 /// <reference types="node" />
 
 import { promises as fs } from "node:fs";
+import { validateProfileShape } from "./profile-validation.js";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -221,7 +222,9 @@ async function readProfileFile(path: string): Promise<WellnessProfileDocument | 
   try {
     const raw = await fs.readFile(path, "utf8");
     const parsed = JSON.parse(raw) as Partial<WellnessProfileDocument>;
-    if (parsed?.schema !== "delx-wellness-profile/v1") return null;
+    if (parsed?.schema !== "delx-wellness-profile/v1") throw new Error("Unsupported profile schema.");
+    validateProfileShape(parsed, DEFAULT_PROFILE as unknown as Record<string, unknown>, true);
+    rejectSecretsInPatch(parsed);
     // Structural defaults merge: legacy / partial files often lack one or more
     // sub-objects, and downstream code (buildProfileSummary, missingCriticalFields,
     // updateProfile) assumes every nested object is defined. Fill any missing
@@ -242,8 +245,10 @@ async function readProfileFile(path: string): Promise<WellnessProfileDocument | 
       safety: { ...DEFAULT_PROFILE.safety, ...(parsed.safety ?? {}) },
       notes: parsed.notes ?? DEFAULT_PROFILE.notes,
     };
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    // Never overwrite a malformed file with defaults, or expose its contents.
+    throw new Error("Stored wellness profile is invalid. Repair or restore the local profile before updating it.");
   }
 }
 
@@ -283,6 +288,7 @@ export async function getProfile(): Promise<WellnessProfileDocument> {
 export async function updateProfile(
   patch: Partial<WellnessProfileDocument>,
 ): Promise<WellnessProfileDocument> {
+  validateProfileShape(patch, DEFAULT_PROFILE as unknown as Record<string, unknown>);
   rejectSecretsInPatch(patch);
   const current = await getProfile();
   const merged: WellnessProfileDocument = {
