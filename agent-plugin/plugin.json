@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "samsung-health-mcp",
+  "version": "0.8.0",
+  "description": "Read the user's Samsung Health personal-data export (steps, exercise, heart rate, sleep) through the local samsung-health MCP server.",
+  "author": {
+    "name": "David Mosiah",
+    "url": "https://github.com/davidmosiah"
+  },
+  "homepage": "https://github.com/davidmosiah/samsung-health-mcp",
+  "repository": "https://github.com/davidmosiah/samsung-health-mcp",
+  "license": "MIT",
+  "keywords": [
+    "fitness",
+    "galaxy-watch",
+    "health",
+    "health-connect",
+    "hermes",
+    "mcp",
+    "model-context-protocol",
+    "samsung-health",
+    "wearable"
+  ]
+}

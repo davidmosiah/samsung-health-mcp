@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "samsung-health": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "samsung-health-mcp-unofficial@0.8.0"
+      ],
+      "cwd": "${PLUGIN_DATA}"
+    }
+  }
+}
