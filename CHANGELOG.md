@@ -1,3 +1,22 @@
+## Unreleased
+
+- Preserve the user's Hermes approval policy during setup. Do not inject a
+  disabled MCP reload confirmation or recommend disabling it.
+- Make profile/onboarding reads non-mutating, including legacy-profile fallback.
+  Explicit profile updates retain locked migration and atomic writes.
+- Require `explicit_user_intent: true` to clear incremental cache through MCP or
+  CLI; missing, false and non-boolean intent leave stored cache unchanged.
+- Reject pre-existing symlinks and special files before copying/changing import
+  permissions. Use unique import destinations and avoid selecting unrelated
+  CSV folders during auto-discovery. This does not defend against concurrent
+  hostile path replacement.
+- Document portable-plugin storage, external reads, npm execution, model-provider
+  data sharing, optional watch/HTTP behavior, and the current catalog release hold.
+
+These source fixes do not change the published npm 0.8.0 runtime. Publish a new
+version, update the portable npm pin, and repeat cold-install and catalog gates
+before submitting to Hermes.
+
 ## 0.8.0 — 2026-11-02
 
 ### Compatibility and migration

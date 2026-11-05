@@ -36,8 +36,10 @@ Synthetic tests cover cooperating processes, migration/update races, quota rejec
 without disk mutation, abandoned lock refusal, cleanup after exceptions and mode
 checks. No real profile, account or provider network is used.
 
-Checking an absent canonical profile may now create its private parent directory
-and briefly acquire a lock while checking legacy migration. Access failures other
+Read-only profile and onboarding calls do not create directories, locks or files.
+If the canonical profile is absent, they may read a valid legacy profile without
+migrating it. An explicit profile update or migration uses the cooperative lock
+and may create the canonical parent directory and migrate the legacy data. Access failures other
 than ENOENT fail closed without falling back to a legacy file. Filesystem errors
 are reported without exposing local paths or file contents.
 

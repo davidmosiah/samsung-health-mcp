@@ -119,7 +119,7 @@ function buildHermesRecommendations(check: { config_exists: boolean; samsung_hea
   else if (!check.samsung_health_server_configured) recommendations.push("Add an `samsung_health` MCP server block to `~/.hermes/config.yaml`.");
   if (check.config_exists && check.samsung_health_server_configured && !check.package_pinned) recommendations.push(`Pin Hermes MCP command to \`${PINNED_NPM_PACKAGE}\` to avoid stale npx cache behavior.`);
   if (!check.skill_installed) recommendations.push("Install the Hermes skill at `~/.hermes/skills/samsung-health-mcp/SKILL.md`.");
-  if (check.config_exists && check.mcp_reload_confirmation_disabled !== true) recommendations.push("Optional for lower friction: set `approvals.mcp_reload_confirm: false` if your Hermes policy allows MCP reload without confirmation.");
+  recommendations.push("Keep the user's Hermes approval policy unchanged; confirm MCP reloads whenever Hermes requests approval.");
   recommendations.push("After Hermes config changes, use `/reload-mcp` or `hermes mcp test samsung_health`; do not restart the gateway for normal Samsung Health export access.");
   return recommendations;
 }
