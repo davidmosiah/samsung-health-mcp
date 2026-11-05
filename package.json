@@ -24,7 +24,7 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "smoke": "node scripts/smoke-tools.mjs",
-    "test": "npm run typecheck && npm run build && npm run smoke && npm run test:export && npm run test:export-regression && npm run test:privacy && npm run test:freshness && npm run test:incremental-cache && npm run test:watch && npm run smoke:http && npm run test:cli-ux && npm run test:agent-readiness && npm run test:hermes-agent && npm run test:demo-contract && npm run test:metadata && npm run test:skill-surface && npm run test:input-limits && npm run test:calendar-date && npm run test:profile-boundaries && npm run test:source-contract && npm run test:export-budget && npm run test:date-precision && npm run test:profile-storage && npm run test:http-local-only",
+    "test": "npm run typecheck && npm run build && npm run smoke && npm run test:export && npm run test:export-regression && npm run test:privacy && npm run test:freshness && npm run test:incremental-cache && npm run test:watch && npm run smoke:http && npm run test:cli-ux && npm run test:agent-readiness && npm run test:hermes-agent && npm run test:demo-contract && npm run test:metadata && npm run test:skill-surface && npm run test:input-limits && npm run test:calendar-date && npm run test:profile-boundaries && npm run test:source-contract && npm run test:export-budget && npm run test:date-precision && npm run test:profile-storage && npm run test:http-local-only && npm run test:overlapping-workouts",
     "test:export": "node scripts/export-parser-test.mjs",
     "test:export-regression": "node scripts/export-parser-regression-test.mjs",
     "test:privacy": "node scripts/privacy-leak-test.mjs",
@@ -46,7 +46,8 @@
     "test:export-budget": "node scripts/test-export-budget.mjs",
     "test:date-precision": "node scripts/test-date-precision.mjs",
     "test:profile-storage": "node scripts/test-profile-storage.mjs",
-    "test:http-local-only": "node scripts/test-http-local-only.mjs"
+    "test:http-local-only": "node scripts/test-http-local-only.mjs",
+    "test:overlapping-workouts": "node scripts/test-overlapping-workouts.mjs"
   },
   "keywords": [
     "mcp",

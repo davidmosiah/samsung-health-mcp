@@ -19,6 +19,12 @@ export interface SamsungHealthConfig {
   lastWatchImportPath?: string;
   /** ISO timestamp of the last successful watch-folder reimport. */
   lastWatchImportAt?: string;
+  /**
+   * Count same-type workouts that cover nearly the same interval once in
+   * summaries. Off by default: overlap alone cannot tell a copy from two real
+   * sessions, so summaries only report them as possible duplicates.
+   */
+  mergeOverlappingWorkouts: boolean;
 }
 
 export interface SamsungHealthRecord {

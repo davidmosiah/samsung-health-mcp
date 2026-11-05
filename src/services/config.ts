@@ -12,8 +12,15 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, homeDir = homedi
     lastImportSourcePath: local.SAMSUNG_HEALTH_LAST_IMPORT_SOURCE_PATH,
     watchPath: env.SAMSUNG_HEALTH_WATCH_PATH ?? local.SAMSUNG_HEALTH_WATCH_PATH,
     lastWatchImportPath: local.SAMSUNG_HEALTH_LAST_WATCH_IMPORT_PATH,
-    lastWatchImportAt: local.SAMSUNG_HEALTH_LAST_WATCH_IMPORT_AT
+    lastWatchImportAt: local.SAMSUNG_HEALTH_LAST_WATCH_IMPORT_AT,
+    mergeOverlappingWorkouts: parseFlag(env.SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS ?? local.SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS)
   };
+}
+
+/** Only an explicit "true"/"1"/"yes" turns a switch on; anything else leaves it off. */
+export function parseFlag(value: string | boolean | undefined): boolean {
+  if (typeof value === "boolean") return value;
+  return value !== undefined && ["true", "1", "yes"].includes(value.trim().toLowerCase());
 }
 
 export function parsePrivacyMode(value: string | undefined): PrivacyMode {
