@@ -6,6 +6,7 @@ export const ResponseFormatSchema = z.enum(["markdown", "json"]).default("markdo
 export const AgentClientSchema = z.enum(AGENT_CLIENTS).default("generic");
 export const PrivacyModeSchema = z.enum(["summary", "structured", "raw"]).optional();
 export const TimezoneSchema = z.string().min(1).max(80).optional().describe("IANA timezone, e.g. America/Fortaleza. Defaults to SAMSUNG_HEALTH_TIMEZONE or UTC.");
+export const MergeOverlappingWorkoutsSchema = z.boolean().optional().describe("Count same-type workouts that overlap by at least 80% of the longer one once, e.g. copies another app wrote back. Defaults to SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS (off): they are then counted as recorded and reported in workouts.possible_duplicates.");
 
 export const ResponseOnlyInputSchema = z.object({
   response_format: ResponseFormatSchema
@@ -43,6 +44,7 @@ export const DailySummaryInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("YYYY-MM-DD local date. Defaults to today in the configured timezone."),
   timezone: TimezoneSchema,
   privacy_mode: PrivacyModeSchema,
+  merge_overlapping_workouts: MergeOverlappingWorkoutsSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -60,6 +62,7 @@ export const WeeklySummaryInputSchema = z.object({
   days: z.number().int().min(1).max(30).default(7),
   timezone: TimezoneSchema,
   privacy_mode: PrivacyModeSchema,
+  merge_overlapping_workouts: MergeOverlappingWorkoutsSchema,
   response_format: ResponseFormatSchema
 }).strict();
 

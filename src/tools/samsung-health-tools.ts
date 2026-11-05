@@ -288,12 +288,13 @@ export function registerSamsungHealthTools(server: McpServer): void {
     description: "Build a daily wellness summary from local Samsung Health export data. Individual workout records follow privacy_mode (default `summary`: aggregates only). It is not live Samsung Health and not medical advice.",
     inputSchema: DailySummaryInputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }, async ({ date, timezone, privacy_mode, response_format }) => {
+  }, async ({ date, timezone, privacy_mode, merge_overlapping_workouts, response_format }) => {
     try {
       const config = getConfig();
       const summary = await buildDailySummary(config.exportPath, date, {
         timezone: timezone ?? config.timezone,
-        privacyMode: privacy_mode ?? config.privacyMode
+        privacyMode: privacy_mode ?? config.privacyMode,
+        mergeOverlappingWorkouts: merge_overlapping_workouts ?? config.mergeOverlappingWorkouts
       });
       return makeResponse(summary, response_format, formatSummaryMarkdown(summary));
     } catch (error) {
@@ -321,12 +322,13 @@ export function registerSamsungHealthTools(server: McpServer): void {
     description: "Build a weekly wellness summary from local Samsung Health export data. It is not live Samsung Health and not medical advice.",
     inputSchema: WeeklySummaryInputSchema.shape,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
-  }, async ({ end_date, days, timezone, privacy_mode, response_format }) => {
+  }, async ({ end_date, days, timezone, privacy_mode, merge_overlapping_workouts, response_format }) => {
     try {
       const config = getConfig();
       const summary = await buildWeeklySummary(config.exportPath, end_date, days, {
         timezone: timezone ?? config.timezone,
-        privacyMode: privacy_mode ?? config.privacyMode
+        privacyMode: privacy_mode ?? config.privacyMode,
+        mergeOverlappingWorkouts: merge_overlapping_workouts ?? config.mergeOverlappingWorkouts
       });
       return makeResponse(summary, response_format, formatSummaryMarkdown(summary));
     } catch (error) {

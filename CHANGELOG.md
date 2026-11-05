@@ -1,3 +1,18 @@
+## Unreleased
+
+### Added
+
+- Opt-in merge for overlapping same-type workouts (PR19 follow-up). Daily and
+  weekly summaries now report `workouts.possible_duplicates` (weekly:
+  `totals.possible_duplicate_workouts`): workouts that cover at least 80% of a
+  longer workout of the same type, such as a copy another app wrote back through
+  Health Connect. By default they are still counted, so totals do not change.
+  Set `SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS=true`, or pass
+  `merge_overlapping_workouts: true` to `samsung_health_daily_summary` /
+  `samsung_health_weekly_summary`, to count them once. Back-to-back sessions and
+  sessions that overlap by half are never flagged. Each summary echoes
+  `merge_overlapping_workouts` so an agent knows which totals it got.
+
 ## 0.8.0 — 2026-11-02
 
 ### Compatibility and migration

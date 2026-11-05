@@ -210,7 +210,14 @@ SAMSUNG_HEALTH_EXPORT_PATH=/path/to/SamsungHealth  # folder, csv, or zip
 SAMSUNG_HEALTH_PRIVACY_MODE=summary                # summary | structured | raw
 SAMSUNG_HEALTH_TIMEZONE=America/Fortaleza          # local-day summaries
 SAMSUNG_HEALTH_WATCH_PATH=/path/to/health-exports  # optional: auto-reimport the newest export dropped here
+SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS=false    # optional: count overlapping same-type workout copies once
 ```
+
+### Workouts copied by other apps
+
+When several apps share workouts through Health Connect (for example Hevy, MyFitnessPal and Samsung Health), the export can hold the same session more than once with different record IDs. Only records with the same ID and identical fields are removed automatically ([duplicate policy](docs/samsung-source-contracts.md#conservative-duplicate-policy)).
+
+Daily and weekly summaries also report `workouts.possible_duplicates`: workouts that cover at least 80% of a longer workout of the same type. They are still counted, because overlap alone cannot prove two records are one session. If you know your apps write copies, set `SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS=true`, or pass `merge_overlapping_workouts: true` to `samsung_health_daily_summary` or `samsung_health_weekly_summary`, and those workouts count once (the longest record is kept). Back-to-back sessions and sessions that overlap by half are never flagged.
 
 `setup` writes these settings into `~/.samsung-health-mcp/config.json` with `0600` permissions.
 

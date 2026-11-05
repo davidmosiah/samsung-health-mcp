@@ -11,6 +11,11 @@ interface SummaryOptions {
    * summary never returns individual workout records unless asked.
    */
   privacyMode?: PrivacyMode;
+  /**
+   * Count same-type workouts that cover nearly the same interval once. Off by
+   * default; they are always reported in `workouts.possible_duplicates`.
+   */
+  mergeOverlappingWorkouts?: boolean;
 }
 
 interface DayWindow {
@@ -36,7 +41,8 @@ export async function buildDailySummary(exportPath: string | undefined, date?: s
     timezone,
     cacheHit: snapshot.cache.hit,
     exportModifiedAt: snapshot.location.modified_at,
-    privacyMode: options.privacyMode ?? "summary"
+    privacyMode: options.privacyMode ?? "summary",
+    mergeOverlappingWorkouts: options.mergeOverlappingWorkouts ?? false
   });
 }
 
@@ -58,6 +64,7 @@ function weeklyPrivacyDisclosure(requested: PrivacyMode): string {
 export async function buildWeeklySummary(exportPath: string | undefined, endDate?: string, days = 7, options: SummaryOptions = {}) {
   const timezone = options.timezone ?? "UTC";
   const requestedPrivacyMode = options.privacyMode ?? WEEKLY_EFFECTIVE_PRIVACY_MODE;
+  const mergeOverlappingWorkouts = options.mergeOverlappingWorkouts ?? false;
   const normalizedDays = Math.min(Math.max(Math.trunc(days), 1), 30);
   const targetEndDate = endDate ?? todayIsoDate(timezone);
   const startDate = addCalendarDays(targetEndDate, -(normalizedDays - 1));
@@ -85,7 +92,8 @@ export async function buildWeeklySummary(exportPath: string | undefined, endDate
         // with an explicit privacy_mode for record-level access. The rollup
         // reports `requested_privacy_mode` next to this effective one so the
         // agent is never told a mode it did not ask for.
-        privacyMode: WEEKLY_EFFECTIVE_PRIVACY_MODE
+        privacyMode: WEEKLY_EFFECTIVE_PRIVACY_MODE,
+        mergeOverlappingWorkouts
       }
     ));
   }
@@ -96,6 +104,7 @@ export async function buildWeeklySummary(exportPath: string | undefined, endDate
     distance: round(daily.reduce((sum, item) => sum + (item.totals.distance ?? 0), 0)),
     workouts: daily.reduce((sum, item) => sum + item.workouts.count, 0),
     workout_duration_minutes: round(daily.reduce((sum, item) => sum + item.workouts.total_duration_minutes, 0)),
+    possible_duplicate_workouts: daily.reduce((sum, item) => sum + item.workouts.possible_duplicates, 0),
     sleep_minutes: daily.reduce((sum, item) => sum + item.sleep.minutes_asleep, 0),
     mindful_minutes: round(daily.reduce((sum, item) => sum + item.mindfulness.minutes, 0))
   };
@@ -113,6 +122,7 @@ export async function buildWeeklySummary(exportPath: string | undefined, endDate
     requested_privacy_mode: requestedPrivacyMode,
     privacy_mode: WEEKLY_EFFECTIVE_PRIVACY_MODE,
     privacy_disclosure: weeklyPrivacyDisclosure(requestedPrivacyMode),
+    merge_overlapping_workouts: mergeOverlappingWorkouts,
     generated_at: snapshot.generated_at,
     source: snapshot.source,
     export_modified_at: snapshot.location.modified_at,
@@ -154,10 +164,14 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
   cacheHit: boolean;
   exportModifiedAt?: string;
   privacyMode?: PrivacyMode;
+  mergeOverlappingWorkouts?: boolean;
 }) {
   const privacyMode = options.privacyMode ?? "summary";
+  const mergeOverlapping = options.mergeOverlappingWorkouts ?? false;
   const dayRecords = records.filter((record) => record.calendarDate ? record.calendarDate === window.date : recordOverlaps(record.startDate, record.endDate, window.start, window.end));
-  const dayWorkouts = workouts.filter((workout) => recordOverlaps(workout.startDate, workout.endDate, window.start, window.end));
+  const recordedWorkouts = workouts.filter((workout) => recordOverlaps(workout.startDate, workout.endDate, window.start, window.end));
+  const possibleDuplicates = overlappingWorkoutCopies(recordedWorkouts);
+  const dayWorkouts = mergeOverlapping ? recordedWorkouts.filter((workout) => !possibleDuplicates.has(workout)) : recordedWorkouts;
   const workoutView = workoutPrivacyView(dayWorkouts, privacyMode, options.timezone);
   const steps = sumType(dayRecords, "samsung_health_steps");
   const activeEnergy = sumType(dayRecords, "samsung_health_active_energy");
@@ -211,6 +225,10 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
       count: dayWorkouts.length,
       total_duration_minutes: workoutDuration,
       activity_counts: countBy(dayWorkouts, (workout) => workout.workoutActivityType || "unknown"),
+      // Same-type workouts covering nearly the same interval as a longer one:
+      // likely a copy another app wrote back. Counted unless merging is on.
+      possible_duplicates: possibleDuplicates.size,
+      merge_overlapping_workouts: mergeOverlapping,
       privacy_mode: privacyMode,
       records: workoutView.workouts,
       disclosure: workoutView.disclosure
@@ -224,9 +242,50 @@ function summarizeDay(records: SamsungHealthRecord[], workouts: SamsungHealthWor
     },
     notes: [
       "Summary is derived from a Samsung Health export file, not live Samsung Health.",
-      "This is wellness context, not medical diagnosis."
+      "This is wellness context, not medical diagnosis.",
+      ...(possibleDuplicates.size > 0 && !mergeOverlapping
+        ? [`${possibleDuplicates.size} workout(s) overlap another of the same type by at least 80% and may be copies from another app; they are counted. Pass merge_overlapping_workouts=true to count them once.`]
+        : [])
     ]
   };
+}
+
+/** Share of the longer workout two same-type workouts must cover to look like one session. */
+const OVERLAP_COPY_SHARE = 0.8;
+
+/**
+ * Workouts that look like a copy of a longer same-type workout: they cover at
+ * least 80% of its interval. A phone or app copy of a watch session overlaps it
+ * almost entirely; back-to-back or half-overlapping sessions never qualify.
+ * This is a heuristic, so callers count these unless merging was asked for.
+ */
+function overlappingWorkoutCopies(workouts: SamsungHealthWorkout[]): Set<SamsungHealthWorkout> {
+  // Longest interval first, so the record kept is the longest one even when an
+  // app writes no duration column.
+  const longestFirst = workouts
+    .map((workout) => ({ workout, interval: workoutInterval(workout) }))
+    .filter((item): item is { workout: SamsungHealthWorkout; interval: TimeInterval } => item.interval !== undefined)
+    .sort((left, right) => (right.interval.end - right.interval.start) - (left.interval.end - left.interval.start));
+  const kept: Array<{ workout: SamsungHealthWorkout; interval: TimeInterval }> = [];
+  const copies = new Set<SamsungHealthWorkout>();
+  for (const { workout, interval } of longestFirst) {
+    const isCopy = kept.some((other) => {
+      if (other.workout.workoutActivityType !== workout.workoutActivityType) return false;
+      const overlap = Math.min(interval.end, other.interval.end) - Math.max(interval.start, other.interval.start);
+      const longer = Math.max(interval.end - interval.start, other.interval.end - other.interval.start);
+      return longer > 0 && overlap >= longer * OVERLAP_COPY_SHARE;
+    });
+    if (isCopy) copies.add(workout);
+    else kept.push({ workout, interval });
+  }
+  return copies;
+}
+
+function workoutInterval(workout: SamsungHealthWorkout): TimeInterval | undefined {
+  const start = parseSamsungDate(workout.startDate)?.getTime();
+  const end = parseSamsungDate(workout.endDate)?.getTime();
+  if (start === undefined || end === undefined || end <= start) return undefined;
+  return { start, end };
 }
 
 function buildDayWindow(date: string, timezone: string): DayWindow {

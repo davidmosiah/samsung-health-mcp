@@ -77,6 +77,8 @@ function demoDailySummary() {
       activity_counts: {
         running: 1
       },
+      possible_duplicates: 0,
+      merge_overlapping_workouts: false,
       privacy_mode: "summary",
       records: [] as unknown[],
       disclosure: "summary_mode_omits_individual_workouts"
@@ -104,6 +106,7 @@ function demoWeeklySummary() {
     privacy_mode: "summary",
     privacy_disclosure:
       "weekly_summary_always_aggregates_requested_privacy_mode_raw_was_not_applied_use_samsung_health_daily_summary_or_samsung_health_list_workouts_for_record_level_access",
+    merge_overlapping_workouts: false,
     generated_at: DEMO_GENERATED_AT,
     source: "samsung_health_export",
     export_modified_at: DEMO_EXPORT_MODIFIED_AT,
@@ -119,7 +122,8 @@ function demoWeeklySummary() {
       sleep_minutes: 2898,
       mindful_minutes: 40,
       workout_duration_minutes: 198,
-      workouts: 3
+      workouts: 3,
+      possible_duplicate_workouts: 0
     },
     averages: {
       steps_per_day: 7124,

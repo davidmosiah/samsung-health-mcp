@@ -32,13 +32,26 @@ not added to output or persisted. Device UUID is never a session identity.
 Different IDs, missing/ambiguous IDs, or conflicting payloads remain separate,
 including sub-rounding numeric changes and different device/source fields. The
 export filename is excluded; identical records copied between files can collapse.
-No overlap threshold or rounding heuristic merges potentially distinct sessions.
+By default no overlap threshold or rounding heuristic merges potentially distinct sessions.
 Accordingly, counts may include phone/watch copies when their identities differ;
 this uncertainty cannot be safely solved from temporal overlap alone.
 
 [Samsung Common API](https://developer.samsung.com/health/android/data/api-reference/com/samsung/android/sdk/healthdata/HealthConstants.Common.html)
 distinguishes a record's unique ID from a source device identifier. CSV aliases
 are accepted conservatively; unsupported identifiers simply disable deduplication.
+
+### Overlapping workouts: reported by default, merged only on request
+
+Daily and weekly summaries flag a workout as a possible duplicate when it covers
+at least 80% of a longer workout of the same activity type, the shape of a copy
+another app writes back through Health Connect. By default flagged workouts are
+still counted and only reported (`workouts.possible_duplicates`,
+`totals.possible_duplicate_workouts`), so default totals stay faithful to the
+export. `SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS=true`, or
+`merge_overlapping_workouts: true` on the summary tools, counts each flagged
+workout once and keeps the longest record. Back-to-back sessions and sessions
+that overlap by half never reach the 80% share. The raw workout listing and the
+parser are not affected.
 
 Related: [PR19](https://github.com/davidmosiah/samsung-health-mcp/pull/19) by hitomi1
 and issue18. This implementation and synthetic tests were authored independently

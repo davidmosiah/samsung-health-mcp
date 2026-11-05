@@ -15,6 +15,8 @@ export interface LocalSamsungHealthConfig {
   SAMSUNG_HEALTH_LAST_WATCH_IMPORT_PATH?: string;
   /** ISO timestamp of the last successful watch-folder reimport. */
   SAMSUNG_HEALTH_LAST_WATCH_IMPORT_AT?: string;
+  /** "true" to count overlapping same-type workout copies once in summaries. */
+  SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS?: string;
 }
 
 export function localConfigPath(homeDir = homedir()): string {

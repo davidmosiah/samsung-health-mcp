@@ -44,6 +44,13 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "SAMSUNG_HEALTH_MERGE_OVERLAPPING_WORKOUTS",
+          "description": "Optional. true counts same-type workouts that overlap by at least 80% of the longer one once in summaries (copies written by other apps). Defaults to false: they are counted and reported as possible duplicates.",
+          "isRequired": false,
+          "format": "boolean",
+          "isSecret": false
         }
       ]
     }
