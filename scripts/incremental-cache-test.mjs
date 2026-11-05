@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, existsSync, statSync, utimesSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -128,13 +129,45 @@ try {
   });
   assert.equal(afterMtimeChange.structuredContent?.count, 4, 'mtime change should invalidate cache and re-parse');
 
-  // 8. Clear-cache tool wipes the cache state.
+  // 8. Cache clear requires actual confirmation, on both MCP and CLI paths.
+  const beforeClear = readFileSync(cachePath, 'utf8');
+  const tools = await client.listTools();
+  const clearDefinition = tools.tools.find((tool) => tool.name === 'samsung_health_clear_incremental_cache');
+  assert.equal(clearDefinition?.inputSchema?.properties?.explicit_user_intent?.type, 'boolean');
+  for (const intent of [undefined, false]) {
+    const denied = await client.callTool({
+      name: 'samsung_health_clear_incremental_cache',
+      arguments: { response_format: 'json', ...(intent === undefined ? {} : { explicit_user_intent: intent }) }
+    });
+    assert.equal(denied.structuredContent?.ok, false);
+    assert.equal(denied.structuredContent?.error, 'USER_ACTION_REQUIRED');
+    assert.equal(readFileSync(cachePath, 'utf8'), beforeClear);
+  }
+  function clearViaCli(intent) {
+    const input = { response_format: 'json', ...(intent === undefined ? {} : { explicit_user_intent: intent }) };
+    const result = spawnSync(process.execPath, ['dist/index.js', 'call', 'samsung_health_clear_incremental_cache', '--json', JSON.stringify(input)], {
+      encoding: 'utf8', timeout: 10000,
+      env: { PATH: process.env.PATH ?? '', HOME: fakeHome, USERPROFILE: fakeHome, ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot ?? '' } : {}) }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  }
+  for (const intent of [undefined, false, 'true', 1]) {
+    const denied = clearViaCli(intent);
+    assert.equal(denied.ok, false);
+    assert.equal(denied.error, 'USER_ACTION_REQUIRED');
+    assert.equal(readFileSync(cachePath, 'utf8'), beforeClear);
+  }
   const clear = await client.callTool({
     name: 'samsung_health_clear_incremental_cache',
-    arguments: { response_format: 'json' }
+    arguments: { response_format: 'json', explicit_user_intent: true }
   });
   assert.equal(clear.structuredContent?.ok, true);
   assert.equal(clear.structuredContent?.existed, true);
+  assert.deepEqual(JSON.parse(readFileSync(cachePath, 'utf8')).categories, {});
+  writeFileSync(cachePath, beforeClear);
+  assert.equal(clearViaCli(true).ok, true);
+  assert.deepEqual(JSON.parse(readFileSync(cachePath, 'utf8')).categories, {});
 
   const afterClear = await client.callTool({
     name: 'samsung_health_list_records',
@@ -157,7 +190,7 @@ try {
     ?.find((c) => c.category === 'samsung_health_NONE');
   assert.equal(unknownEntry, undefined);
 
-  console.log(JSON.stringify({ ok: true, incremental_cache: true, scenarios: 9 }, null, 2));
+  console.log(JSON.stringify({ ok: true, incremental_cache: true, scenarios: 9, explicit_cache_clear_intent: true, cli_intent_gate: true }, null, 2));
 } finally {
   await client.close();
 }

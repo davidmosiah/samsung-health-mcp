@@ -17,14 +17,17 @@ MCP server `samsung-health` from the `samsung-health-mcp-unofficial@0.8.0` npm p
 ## Setup (the user runs this in a terminal, not in chat)
 
 ```bash
-npx -y samsung-health-mcp-unofficial@0.8.0 setup --auto-import --timezone <IANA zone>
+npx -y samsung-health-mcp-unofficial@0.8.0 setup --import /absolute/path/to/SamsungHealth-export.zip --timezone <IANA-zone>
 npx -y samsung-health-mcp-unofficial@0.8.0 doctor
 ```
 
-Download the data first in the Samsung Health app (Settings → Download personal data) and copy it to this machine; `setup --import <path>` takes an explicit file or folder.
+Download the data first in the Samsung Health app (Settings → Download personal data) and copy only that export to this machine. Use an explicit file or dedicated export folder, not a broad personal folder. Do not use `setup --client hermes`: the portable plugin already supplies the MCP entry and skill. Keep Hermes approval settings unchanged. The pinned npm 0.8.0 is held from catalog submission pending safety fixes; see this package’s README.
 
 ## Safety
 
+- Health summaries and local paths returned to Hermes may reach its configured model/provider; local parsing alone is not a no-egress guarantee.
+- State is HOME-based and shared across Hermes profiles: exports/config/cache under `~/.samsung-health-mcp/`, wellness profile under `~/.delx-wellness/`. In npm 0.8.0, profile reads may migrate a legacy file and write shared state.
+- A previously configured watch folder can automatically import/promote exports. Do not configure it without the user asking.
 - Never ask the user to paste client secrets, passwords, tokens or MFA codes into the chat; setup happens in their terminal.
 - Tools that change local state: samsung_health_profile_update (local profile only), samsung_health_reimport (re-reads the local export). Use them only when the user asks.
 - Destructive: samsung_health_clear_incremental_cache (clears the local parsed cache). Confirm with the user first.

@@ -183,14 +183,14 @@ function mergeHermesConfig(configPath: string): string | undefined {
     if (existing.includes(PINNED_NPM_PACKAGE)) return undefined;
     const backupPath = backupConfig(configPath);
     const updated = existing.replace(/samsung-health-mcp-unofficial(?:@\d+\.\d+\.\d+)?/g, PINNED_NPM_PACKAGE);
-    writeFileSync(configPath, ensureReloadHint(updated), { mode: 0o600 });
+    writeFileSync(configPath, updated, { mode: 0o600 });
     chmodSync(configPath, 0o600);
     return backupPath;
   }
 
   const backupPath = backupConfig(configPath);
   const next = existing.trimEnd().length ? addHermesBlock(existing) : snippet;
-  writeFileSync(configPath, ensureReloadHint(next), { mode: 0o600 });
+  writeFileSync(configPath, next, { mode: 0o600 });
   chmodSync(configPath, 0o600);
   return backupPath;
 }
@@ -217,10 +217,4 @@ function backupConfig(path: string): string {
   writeFileSync(path, readFileSync(backupPath, "utf8"), { mode: 0o600 });
   chmodSync(path, 0o600);
   return backupPath;
-}
-
-function ensureReloadHint(text: string): string {
-  if (/mcp_reload_confirm\s*:\s*false/.test(text)) return text.endsWith("\n") ? text : `${text}\n`;
-  if (/^approvals:\s*$/m.test(text)) return `${text.trimEnd()}\n  mcp_reload_confirm: false\n`;
-  return `${text.trimEnd()}\n\napprovals:\n  mcp_reload_confirm: false\n`;
 }

@@ -263,12 +263,19 @@ async function writeProfileFile(path: string, profile: WellnessProfileDocument):
  * Read the canonical profile. Returns a fresh DEFAULT_PROFILE if no file
  * exists (and does not create the file — call updateProfile to persist).
  *
- * Auto-migrates from Hermes / OpenClaw profile if found and the canonical
- * file is missing.
+ * Falls back to a legacy Hermes / OpenClaw profile without migrating it.
+ * Read-only tools must not create directories, locks, or profile files.
+ * Migration is deferred to an explicitly requested profile update.
  */
 export async function getProfile(): Promise<WellnessProfileDocument> {
   if (await fileExists(PROFILE_PATH)) return (await readProfileFile(PROFILE_PATH)) ?? clone(DEFAULT_PROFILE);
-  return withProfileLock(PROFILE_PATH, getProfileUnlocked);
+  for (const candidate of LEGACY_PATHS) {
+    if (await fileExists(candidate)) {
+      const legacy = await readProfileFile(candidate);
+      if (legacy) return legacy;
+    }
+  }
+  return clone(DEFAULT_PROFILE);
 }
 
 async function getProfileUnlocked(): Promise<WellnessProfileDocument> {

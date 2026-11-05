@@ -1,5 +1,6 @@
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { chmodSync, constants, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { inspectExportLocation } from "./samsung-health-export.js";
 
 export interface ImportResult {
@@ -19,18 +20,23 @@ export interface DiscoveredExport {
 }
 
 export async function importSamsungHealthExport(sourcePath: string, homeDir: string): Promise<ImportResult> {
-  const location = await inspectExportLocation(sourcePath);
+  const source = resolve(sourcePath.replace(/^~/, process.env.HOME ?? homeDir));
+  // Preflight before reading/copying the export or changing any permissions.
+  // These checks reject existing links/special files, not concurrent path swaps.
+  assertSafePath(source);
+  assertSafeTree(source);
+  const exportsDir = resolve(homeDir, ".samsung-health-mcp", "exports");
+  assertSafePath(exportsDir, true);
+  const location = await inspectExportLocation(source);
   if (!location.exists) throw new Error(location.note ?? "Samsung Health export not found.");
   const importedAt = new Date().toISOString();
-  const exportsDir = join(homeDir, ".samsung-health-mcp", "exports");
   mkdirSync(exportsDir, { recursive: true, mode: 0o700 });
   const stamp = importedAt.replace(/[-:]/g, "").replace(/\..+/, "Z");
   const extension = location.kind === "zip" ? ".zip" : location.kind === "csv" ? ".csv" : "";
-  const destination = join(exportsDir, `samsung-health-export-${stamp}${extension}`);
-  const source = location.resolved_path;
-  if (!source) throw new Error("Samsung Health export source could not be resolved.");
-  if (location.kind === "directory") cpSync(source, destination, { recursive: true, filter: (sourcePath) => !sourcePath.includes("node_modules") });
-  else copyFileSync(source, destination);
+  const destination = join(exportsDir, `samsung-health-export-${stamp}-${randomUUID()}${extension}`);
+  if (location.kind === "directory") cpSync(source, destination, { recursive: true, dereference: false, force: false, errorOnExist: true, filter: (sourcePath) => !sourcePath.includes("node_modules") });
+  else copyFileSync(source, destination, constants.COPYFILE_EXCL);
+  assertSafeTree(destination);
   chmodRecursive(destination);
   return {
     imported_path: destination,
@@ -55,6 +61,12 @@ export async function discoverLatestExport(homeDir: string): Promise<DiscoveredE
 
   const verified: DiscoveredExport[] = [];
   for (const candidate of candidates) {
+    try {
+      assertSafePath(candidate.path);
+      assertSafeTree(candidate.path);
+    } catch {
+      continue;
+    }
     const location = await inspectExportLocation(candidate.path);
     if (!location.exists) continue;
     verified.push({
@@ -72,6 +84,7 @@ function scanDirectory(path: string, depth: number, candidates: DiscoveredExport
   if (depth > 3) return;
   let entries;
   try {
+    assertSafePath(path);
     entries = readdirSync(path, { withFileTypes: true });
   } catch {
     return;
@@ -81,7 +94,7 @@ function scanDirectory(path: string, depth: number, candidates: DiscoveredExport
     if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
     const fullPath = join(path, entry.name);
     if (entry.isDirectory()) {
-      if (/samsung.?health/i.test(entry.name) || hasCsvFiles(fullPath)) {
+      if (/samsung.?health/i.test(entry.name) || hasSamsungCsvFiles(fullPath)) {
         candidates.push(candidate(fullPath, 100));
       }
       scanDirectory(fullPath, depth + 1, candidates);
@@ -95,16 +108,17 @@ function scanDirectory(path: string, depth: number, candidates: DiscoveredExport
   }
 }
 
-function hasCsvFiles(path: string): boolean {
+function hasSamsungCsvFiles(path: string): boolean {
   try {
-    return readdirSync(path, { withFileTypes: true }).some((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".csv"));
+    return readdirSync(path, { withFileTypes: true }).some((entry) => entry.isFile() && /samsung/i.test(entry.name) && entry.name.toLowerCase().endsWith(".csv"));
   } catch {
     return false;
   }
 }
 
 function chmodRecursive(path: string): void {
-  const stat = statSync(path);
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) throw new Error("Export import refuses symbolic links and special files.");
   if (stat.isDirectory()) {
     chmodSync(path, 0o700);
     for (const entry of readdirSync(path, { withFileTypes: true })) {
@@ -115,11 +129,38 @@ function chmodRecursive(path: string): void {
   chmodSync(path, 0o600);
 }
 
+/** Reject existing symlinks/special files in the selected path and its ancestors. */
+function assertSafePath(path: string, allowMissing = false): void {
+  const paths = [];
+  for (let current = resolve(path); ; current = dirname(current)) {
+    paths.unshift(current);
+    if (dirname(current) === current) break;
+  }
+  for (const current of paths) {
+    try {
+      const stat = lstatSync(current);
+      if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) throw new Error("Export import refuses symbolic links and special files.");
+    } catch (error) {
+      if (allowMissing && (error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+  }
+}
+
+/** Inspect the complete selected tree without following directory or file links. */
+function assertSafeTree(path: string): void {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) throw new Error("Export import refuses symbolic links and special files.");
+  if (stat.isDirectory()) {
+    for (const entry of readdirSync(path, { withFileTypes: true })) assertSafeTree(join(path, entry.name));
+  }
+}
+
 function candidate(path: string, baseScore: number): DiscoveredExport {
   let size_bytes: number | undefined;
   let modified_at: string | undefined;
   try {
-    const stat = statSync(path);
+    const stat = lstatSync(path);
     size_bytes = stat.isFile() ? stat.size : undefined;
     modified_at = stat.mtime.toISOString();
   } catch {

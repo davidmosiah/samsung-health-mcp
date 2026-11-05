@@ -419,11 +419,22 @@ export function registerSamsungHealthTools(server: McpServer): void {
       title: "Clear Samsung Health Incremental Import Cache",
       description:
         "Manually clear the incremental import cache at ~/.samsung-health-mcp/incremental-cache.json. The cache tracks the latest parsed timestamp per Samsung Health record category so subsequent `samsung_health_list_records` calls (with `incremental_cache: true`) skip already-seen records. Use this when you want to force a full re-parse without changing the export file. The cache also auto-invalidates when the export file mtime changes. Gated by explicit_user_intent: true (requires explicit user intent to wipe local cache).",
-      inputSchema: ResponseOnlyInputSchema.shape,
+      inputSchema: {
+        ...ResponseOnlyInputSchema.shape,
+        explicit_user_intent: z.boolean().optional().describe("Must be true after the user confirms clearing the local incremental cache.")
+      },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }
     },
-    async ({ response_format }) => {
+    async ({ response_format, explicit_user_intent }) => {
       try {
+        if (explicit_user_intent !== true) {
+          const payload = {
+            ok: false,
+            error: "USER_ACTION_REQUIRED",
+            message: "Clearing the incremental cache requires explicit_user_intent=true. Confirm with the user before clearing it."
+          };
+          return makeResponse(payload, response_format, bulletList("Samsung Health Incremental Cache", payload));
+        }
         const result = await clearCache();
         const payload = {
           ok: true,

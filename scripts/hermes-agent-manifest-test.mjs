@@ -91,7 +91,55 @@ try {
   assert.equal((mergedConfig.match(/^mcp_servers:/gm) ?? []).length, 1);
   assert.match(mergedConfig, /existing_health_mcp:/);
   assert.match(mergedConfig, /samsung_health:/);
+  assert.doesNotMatch(mergedConfig, /mcp_reload_confirm/);
   rmSync(mergeHome, { recursive: true, force: true });
+
+  // Setup owns the MCP entry, never the user's approval/security policy.
+  for (const policy of [
+    'approvals:\n  mcp_reload_confirm: true\n  mode: interactive\n',
+    'approvals:\n  mcp_reload_confirm: false\n  mode: interactive\n',
+    'approvals: {mcp_reload_confirm: true}\n',
+    ''
+  ]) {
+    for (const server of ['', [
+      'mcp_servers:',
+      '  samsung_health:',
+      '    command: npx',
+      '    args: ["-y", "samsung-health-mcp-unofficial@0.1.0"]',
+      ''
+    ].join('\n')]) {
+      const policyHome = mkdtempSync(join(tmpdir(), 'samsung-hermes-policy-'));
+      try {
+        mkdirSync(join(policyHome, '.hermes'), { recursive: true, mode: 0o700 });
+        const configPath = join(policyHome, '.hermes', 'config.yaml');
+        const before = `${policy}${server}# keep unrelated configuration\nmodel: example-model\n`;
+        writeFileSync(configPath, before, { mode: 0o600 });
+        const run = () => spawnSync(process.execPath, [
+          'dist/index.js', 'setup', '--client', 'hermes', '--export-path', exportPath, '--json'
+        ], { encoding: 'utf8', env: { ...process.env, HOME: policyHome } });
+        const first = run();
+        assert.equal(first.status, 0, first.stderr);
+        const after = readFileSync(configPath, 'utf8');
+        assert.equal((after.match(/mcp_reload_confirm/g) ?? []).length,
+          (before.match(/mcp_reload_confirm/g) ?? []).length);
+        if (policy) assert.ok(after.startsWith(policy), 'approval policy changed');
+        assert.ok(after.includes('# keep unrelated configuration\nmodel: example-model\n'));
+        assert.ok(after.includes(pinnedPackage));
+        const second = run();
+        assert.equal(second.status, 0, second.stderr);
+        assert.equal(readFileSync(configPath, 'utf8'), after, 'repeat setup must be idempotent');
+        const policyDoctor = spawnSync(process.execPath, ['dist/index.js', 'doctor', '--client', 'hermes', '--json'], {
+          encoding: 'utf8', env: { ...process.env, HOME: policyHome }
+        });
+        assert.equal(policyDoctor.status, 0, policyDoctor.stderr);
+        const recommendations = JSON.parse(policyDoctor.stdout).client_checks.hermes.recommendations;
+        assert.ok(recommendations.some(text => text.includes('approval policy unchanged')));
+        assert.ok(recommendations.every(text => !text.includes('mcp_reload_confirm: false')));
+      } finally {
+        rmSync(policyHome, { recursive: true, force: true });
+      }
+    }
+  }
 
   console.log(JSON.stringify({ ok: true, hermes_agent_manifest: true, pinned_package: pinnedPackage }, null, 2));
 } finally {
